@@ -5,6 +5,8 @@ import json
 import logging
 import os
 from typing import Any, Dict
+from decimal import Decimal
+from pathlib import Path
 
 from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_cors import CORS
@@ -48,6 +50,8 @@ from services.user_service import (
     login_or_register,
 )
 from utils.file_ops import save_base64_file
+from openpyxl import Workbook, load_workbook
+from datetime import datetime
 
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(message)s")
@@ -190,10 +194,39 @@ def upload_and_run() -> Any:
 @app.get("/api/v1/invoices")
 def list_invoices() -> Any:
     user_id = request.args.get("user_id")
+    q = request.args.get("q", "")
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
     with db_session() as session:
-        query = session.query(Document).order_by(Document.created_at.desc())
+        query = session.query(Document)
+        # 时间区间过滤（基于创建时间）
+        if start_date:
+            try:
+                from datetime import datetime
+
+                sd = datetime.fromisoformat(start_date)
+                query = query.filter(Document.created_at >= sd)
+            except Exception:
+                pass
+        if end_date:
+            try:
+                from datetime import datetime
+
+                ed = datetime.fromisoformat(end_date)
+                query = query.filter(Document.created_at <= ed)
+            except Exception:
+                pass
         if user_id:
             query = query.filter(Document.user_id == user_id)
+        # 简单关键字搜索：文件名 / vendor / category / raw_result JSON 包含
+        if q:
+            like_q = f"%{q}%"
+            query = query.filter(
+                (Document.file_name.ilike(like_q))
+                | (Document.vendor.ilike(like_q))
+                | (Document.category.ilike(like_q))
+            )
+        query = query.order_by(Document.created_at.desc())
         docs = query.all()
         result = []
         for doc in docs:
@@ -209,6 +242,13 @@ def list_invoices() -> Any:
                 for le in doc.ledger_entries
             ]
             raw = doc.raw_result or {}
+            # 尝试提取发票自身的开票/日期字段（可能在 raw 的不同位置）
+            issue_date = None
+            if isinstance(raw, dict):
+                issue_date = raw.get("issue_date") or raw.get("normalized_fields", {}).get("issue_date")
+                # 有时 issue_date 在 structured_fields 或 top-level 字段
+                if not issue_date:
+                    issue_date = raw.get("structured_fields", {}).get("issue_date")
             voucher_path = raw.get("voucher_pdf_path")
             voucher_url = url_for("get_voucher_pdf", doc_id=doc.id) if voucher_path else None
             result.append(
@@ -216,6 +256,7 @@ def list_invoices() -> Any:
                     "id": doc.id,
                     "file_name": doc.file_name,
                     "vendor": doc.vendor,
+                    "issue_date": issue_date,
                     "amount": doc.amount,
                     "tax_amount": doc.tax_amount,
                     "currency": doc.currency,
@@ -227,6 +268,51 @@ def list_invoices() -> Any:
                 }
             )
     return jsonify({"success": True, "data": result})
+
+
+
+@app.get("/api/v1/invoices/<doc_id>/file")
+def get_invoice_file(doc_id: str) -> Any:
+    """返回原始上传的发票文件以供预览/下载。"""
+    with db_session() as session:
+        doc = session.query(Document).filter_by(id=doc_id).first()
+        if not doc:
+            return jsonify({"success": False, "error": "not_found"}), 404
+        path = doc.file_path
+        if not path or not os.path.exists(path):
+            return jsonify({"success": False, "error": "file_not_found"}), 404
+        # 使用 send_file 返回原始文件（不作为附件，便于直接在浏览器预览）
+        return send_file(path, as_attachment=False, download_name=doc.file_name)
+
+
+
+@app.delete("/api/v1/invoices/<doc_id>")
+def delete_invoice(doc_id: str) -> Any:
+    """删除指定发票记录及其生成的凭证与原始文件（如存在）。"""
+    with db_session() as session:
+        doc = session.query(Document).filter_by(id=doc_id).first()
+        if not doc:
+            return jsonify({"success": False, "error": "not_found"}), 404
+        # 删除相关文件：原始文件与凭证 PDF（若存在）
+        try:
+            raw = doc.raw_result or {}
+            file_path = doc.file_path
+            voucher_path = raw.get("voucher_pdf_path")
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception:
+                    pass
+            if voucher_path and os.path.exists(voucher_path):
+                try:
+                    os.remove(voucher_path)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # 删除数据库记录（ledger entries cascade 删除）
+        session.delete(doc)
+    return jsonify({"success": True})
 
 
 @app.get("/api/v1/invoices/<doc_id>/voucher")
@@ -262,6 +348,83 @@ def financial_report() -> Any:
     summary = financial_report_service.generate_summary(rows, period=period, anchor_date=anchor)
     narrative = financial_report_service.narrative(summary, llm_client)
     return jsonify({"success": True, "summary": summary, "report": narrative})
+
+
+
+@app.post("/api/v1/invoices/voucher_excel")
+def generate_voucher_excel() -> Any:
+    """根据选中的发票列表生成 Excel 格式的记账凭证并返回文件。请求体: { invoice_ids: [id1, id2, ...] }"""
+    data = request.get_json(force=True)
+    invoice_ids = data.get("invoice_ids") or []
+    if not invoice_ids or not isinstance(invoice_ids, list):
+        return jsonify({"success": False, "error": "invoice_ids required"}), 400
+
+    try:
+        rows = []
+
+        with db_session() as session:
+            docs = session.query(Document).filter(Document.id.in_(invoice_ids)).all()
+            for doc in docs:
+                summary = doc.vendor or doc.file_name or ''
+                # 为每个 ledger entry 生成借/贷行
+                for le in doc.ledger_entries:
+                    amt = float(le.amount or 0.0)
+                    # 借方行
+                    rows.append({"summary": summary, "account": le.debit_account or '', "debit": amt, "credit": None})
+                    # 贷方行
+                    rows.append({"summary": '', "account": le.credit_account or '', "debit": None, "credit": amt})
+
+        # helper: convert amount to digit cells (string per cell), width 12
+        def amount_to_cells(amount):
+            if amount is None:
+                return [""] * 12
+            # amount as cents integer
+            amt = Decimal(str(amount))
+            cents = int((amt * 100).to_integral_value())
+            s = str(abs(cents)).rjust(12, '0')  # pad to 12
+            return list(s)
+
+        # try to load template if exists
+        template_paths = [
+            DATA_DIR / 'templates' / 'voucher_template.xlsx',
+            Path('voucher_template.xlsx'),
+        ]
+        wb = None
+        ws = None
+        for p in template_paths:
+            try:
+                if p.exists():
+                    wb = load_workbook(p)
+                    ws = wb.active
+                    break
+            except Exception:
+                wb = None
+                ws = None
+        if wb is None:
+            wb = Workbook()
+            ws = wb.active
+
+        start_row = 8
+        for i, r in enumerate(rows):
+            row = start_row + i
+            ws.cell(row=row, column=1, value=r.get('summary', ''))  # A
+            ws.cell(row=row, column=3, value=r.get('account', ''))  # C
+            debit_cells = amount_to_cells(r.get('debit'))
+            for k, v in enumerate(debit_cells):
+                ws.cell(row=row, column=6 + k, value=v)  # F+
+            credit_cells = amount_to_cells(r.get('credit'))
+            for k, v in enumerate(credit_cells):
+                ws.cell(row=row, column=18 + k, value=v)  # R+
+
+        out_dir = DATA_DIR / 'output' / 'vouchers'
+        out_dir.mkdir(parents=True, exist_ok=True)
+        filename = out_dir / f"vouchers_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.xlsx"
+        wb.save(filename)
+
+        return send_file(str(filename), as_attachment=True, download_name=filename.name)
+    except Exception as e:
+        logging.exception("Failed to generate voucher excel")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.post("/api/v1/analytics/query")

@@ -168,6 +168,7 @@
             <div>
               <h3>已生成凭证</h3>
               <div class="table-wrap">
+<<<<<<< HEAD
                 <table id="invoice-table">
                   <thead>
                     <tr>
@@ -177,12 +178,41 @@
                       <th>分类</th>
                       <th>状态</th>
                       <th>凭证</th>
+=======
+                  <div class="invoice-controls">
+                    <input id="invoice-search" placeholder="搜索文件名/供应商/分类" />
+                    <input id="invoice-start" type="date" />
+                    <input id="invoice-end" type="date" />
+                    <button id="invoice-search-btn" class="ghost">筛选</button>
+                    <button id="invoice-clear-btn" class="ghost">清除</button>
+                  </div>
+                  <table id="invoice-table">
+                  <thead>
+                    <tr>
+                        <th><input type="checkbox" id="select-all-invoices" /></th>
+                        <th>文件</th>
+                        <th>供应商</th>
+                        <th>发票时间</th>
+                        <th>金额</th>
+                        <th>分类</th>
+                        <th>创建时间</th>
+                        <th>状态</th>
+                        <th>预览</th>
+                        <th>发票</th>
+                        <th>操作</th>
+>>>>>>> 4fbaa5a (first commit)
                     </tr>
                   </thead>
                   <tbody>
                     <tr><td colspan="6">加载中...</td></tr>
                   </tbody>
                 </table>
+<<<<<<< HEAD
+=======
+                <div style="margin-top:8px;">
+                  <button id="generate-excel-btn" class="primary">生成凭证（Excel）</button>
+                </div>
+>>>>>>> 4fbaa5a (first commit)
               </div>
             </div>
           </section>
