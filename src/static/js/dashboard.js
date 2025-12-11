@@ -201,7 +201,24 @@ uploadForm?.addEventListener('submit', async (event) => {
       const data = JSON.parse(xhr.responseText);
       renderResult(data);
       refreshDashboard();
+<<<<<<< HEAD
       loadInvoices();
+=======
+
+      // 如果后端返回了 document 信息，先在表格顶部插入一个临时行，随后轮询直到数据库可见
+      const returnedDoc = data.document || {};
+      const docId = returnedDoc.document_id || returnedDoc.documentId || returnedDoc.id || null;
+      if (docId && invoiceTable) {
+        insertTemporaryInvoice(returnedDoc);
+        // 轮询检查是否写入数据库
+        pollInvoiceExists(docId, 12, 2000).then((found) => {
+          // 无论是否找到，都刷新列表（若找到则显示真实记录）
+          loadInvoices();
+        });
+      } else {
+        loadInvoices();
+      }
+>>>>>>> 4fbaa5a (first commit)
     } else {
       resultEl.textContent = `上传失败: ${xhr.responseText}`;
     }
@@ -259,14 +276,28 @@ navItems.forEach((item) =>
 );
 
 const loadInvoices = async () => {
+<<<<<<< HEAD
   const query = state.user ? `?user_id=${state.user.id}` : '';
   const resp = await fetch(`/api/v1/invoices${query}`);
+=======
+  // 构建查询参数：user_id、q、start_date、end_date
+  const params = new URLSearchParams();
+  if (state.user) params.set('user_id', state.user.id);
+  const qInput = document.getElementById('invoice-search');
+  const startInput = document.getElementById('invoice-start');
+  const endInput = document.getElementById('invoice-end');
+  if (qInput && qInput.value.trim()) params.set('q', qInput.value.trim());
+  if (startInput && startInput.value) params.set('start_date', startInput.value);
+  if (endInput && endInput.value) params.set('end_date', endInput.value);
+  const resp = await fetch(`/api/v1/invoices?${params.toString()}`);
+>>>>>>> 4fbaa5a (first commit)
   const data = await resp.json();
   if (!data.success || !invoiceTable) return;
   const tbody = invoiceTable.querySelector('tbody');
   tbody.innerHTML = '';
   data.data.forEach((inv) => {
     const tr = document.createElement('tr');
+<<<<<<< HEAD
     tr.innerHTML = `
       <td>${inv.file_name}</td>
       <td>${inv.vendor || '-'}</td>
@@ -275,10 +306,80 @@ const loadInvoices = async () => {
       <td>${inv.status}</td>
       <td>
         ${inv.voucher_pdf_url ? `<a href="${inv.voucher_pdf_url}" target="_blank">下载凭证</a>` : '生成中'}
+=======
+    const createdAt = inv.created_at ? new Date(inv.created_at).toLocaleString() : '-';
+    const issueAt = inv.issue_date ? new Date(inv.issue_date).toLocaleString() : '-';
+    const previewLink = `/api/v1/invoices/${inv.id}/file`;
+    tr.innerHTML = `
+      <td><input type="checkbox" class="invoice-select" data-id="${inv.id}" /></td>
+      <td>${inv.file_name}</td>
+      <td>${inv.vendor || '-'}</td>
+      <td>${issueAt}</td>
+      <td>${inv.amount ?? '-'}</td>
+      <td>${inv.category || '-'}</td>
+      <td>${createdAt}</td>
+      <td>${inv.status}</td>
+      <td><a href="${previewLink}" target="_blank">预览</a></td>
+      <td><a href="/api/v1/invoices/${inv.id}/file" target="_blank">下载发票</a></td>
+      <td>
+        <a href="#" class="delete-invoice" data-id="${inv.id}">删除</a>
+>>>>>>> 4fbaa5a (first commit)
       </td>
     `;
     tbody.appendChild(tr);
   });
+<<<<<<< HEAD
+=======
+  // 绑定删除事件
+  tbody.querySelectorAll('.delete-invoice').forEach((el) => {
+    el.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const id = el.dataset.id;
+      if (!confirm('确认删除该发票及其凭证？此操作不可撤销')) return;
+      try {
+        const resp = await fetch(`/api/v1/invoices/${id}`, { method: 'DELETE' });
+        const res = await resp.json();
+        if (res.success) {
+          loadInvoices();
+        } else {
+          alert('删除失败: ' + (res.error || 'unknown'));
+        }
+      } catch (err) {
+        alert('删除出错: ' + err.message);
+      }
+    });
+  });
+
+  // 绑定 select-all
+  const selectAll = document.getElementById('select-all-invoices');
+  if (selectAll) {
+    selectAll.checked = false;
+    selectAll.addEventListener('change', () => {
+      const checked = selectAll.checked;
+      tbody.querySelectorAll('.invoice-select').forEach((cb) => (cb.checked = checked));
+    });
+  }
+};
+
+// 绑定筛选按钮
+const bindInvoiceFilters = () => {
+  const btn = document.getElementById('invoice-search-btn');
+  const clearBtn = document.getElementById('invoice-clear-btn');
+  btn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    loadInvoices();
+  });
+  clearBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    const qInput = document.getElementById('invoice-search');
+    const startInput = document.getElementById('invoice-start');
+    const endInput = document.getElementById('invoice-end');
+    if (qInput) qInput.value = '';
+    if (startInput) startInput.value = '';
+    if (endInput) endInput.value = '';
+    loadInvoices();
+  });
+>>>>>>> 4fbaa5a (first commit)
 };
 
 reportForm?.addEventListener('submit', async (event) => {
@@ -326,5 +427,95 @@ window.addEventListener('load', async () => {
   initCharts();
   refreshDashboard();
   bindUploadPreview();
+<<<<<<< HEAD
   loadInvoices();
 });
+=======
+  bindInvoiceFilters();
+  loadInvoices();
+  bindGenerateExcel();
+});
+
+// 生成 Excel 批量凭证
+const bindGenerateExcel = () => {
+  const btn = document.getElementById('generate-excel-btn');
+  btn?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const selected = Array.from(document.querySelectorAll('.invoice-select:checked')).map((el) => el.dataset.id);
+    if (!selected.length) {
+      alert('请先勾选要生成凭证的发票');
+      return;
+    }
+    if (!confirm(`将为 ${selected.length} 张发票生成 Excel 凭证并下载，继续？`)) return;
+    try {
+      const resp = await fetch('/api/v1/invoices/voucher_excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoice_ids: selected }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        alert('生成失败: ' + (err.error || resp.statusText));
+        return;
+      }
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `vouchers_${Date.now()}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('生成出错: ' + err.message);
+    }
+  });
+};
+
+// 插入临时行，显示上传后的占位状态
+const insertTemporaryInvoice = (doc) => {
+  if (!invoiceTable) return;
+  const tbody = invoiceTable.querySelector('tbody');
+  const tr = document.createElement('tr');
+  const filename = doc.file_name || doc.fileName || '上传的文件';
+  const vendor = doc.vendor || '-';
+  const issueAt = doc.issue_date ? new Date(doc.issue_date).toLocaleString() : '-';
+  const createdAt = '-';
+  tr.classList.add('temp-invoice');
+  tr.innerHTML = `
+    <td>${filename}</td>
+    <td>${vendor}</td>
+    <td>${issueAt}</td>
+    <td>-</td>
+    <td>-</td>
+    <td>${createdAt}</td>
+    <td>处理中...</td>
+    <td>-</td>
+    <td>生成中</td>
+    <td><span class="muted">等待写入</span></td>
+  `;
+  tbody.insertBefore(tr, tbody.firstChild);
+};
+
+// 轮询检查发票是否已写入数据库（通过 invoices 接口查找 id）
+const pollInvoiceExists = async (docId, attempts = 10, intervalMs = 2000) => {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const params = new URLSearchParams();
+      if (state.user) params.set('user_id', state.user.id);
+      const resp = await fetch(`/api/v1/invoices?${params.toString()}`);
+      const data = await resp.json();
+      if (data.success && Array.isArray(data.data)) {
+        const found = data.data.find((inv) => inv.id === docId);
+        if (found) return true;
+      }
+    } catch (err) {
+      // ignore
+    }
+    // wait
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return false;
+};
+>>>>>>> 4fbaa5a (first commit)
