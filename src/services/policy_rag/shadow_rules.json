@@ -1,0 +1,122 @@
+[
+  {
+    "id": "taxi_general_limit",
+    "title": "出租车费用与超标说明",
+    "summary": "市内出租车费用应控制在单位标准内（示例100元/次），常规通勤时间建议在6:00–23:00；因天气、航班延误、加班等原因导致超标需在备注说明理由并上传佐证。",
+    "content": "用于公务或项目出行的出租车费用应控制在单位或项目规定的单次上限（如100元/次）内，且出行时间建议在6:00–23:00。因恶劣天气、航班/高铁延误、深夜加班等客观原因导致费用超出上限时，应在报销备注中说明详细原因，并附上相应佐证（如行程单截图、通知邮件等）。",
+    "expense_type": ["taxi"],
+    "scene": ["city_transport", "business_trip"],
+    "org_scope": ["enterprise", "university_lab"],
+    "funding_scope": ["all"],
+    "risk_tags": ["over_limit", "time_window"],
+    "severity_default": "MEDIUM"
+  },
+  {
+    "id": "client_meal_restriction",
+    "title": "内部人员客户餐费限制",
+    "summary": "不得报销仅客户自行用餐的费用；内部人员陪同客户用餐需在备注中说明客户名单及业务事由，金额应与人数和场景匹配。",
+    "content": "任何场景下不得报销仅客户自行用餐、赠送餐券等纯福利性质的费用。内部员工陪同客户用餐时，可以按规定标准报销，但需在发票或报销备注中注明客户名单、单位名称以及会议或洽谈事由，餐费金额应与参与人数、城市消费水平及业务重要性基本匹配，避免明显超标或奢侈消费。",
+    "expense_type": ["meals"],
+    "scene": ["client_entertainment"],
+    "org_scope": ["enterprise"],
+    "funding_scope": ["all"],
+    "risk_tags": ["personal_consumption", "client_only"],
+    "severity_default": "HIGH"
+  },
+  {
+    "id": "hotel_city_level_limit",
+    "title": "差旅住宿上限与票据要求",
+    "summary": "差旅住宿应按城市级别执行限额标准（示例：二线城市400元/晚），需提供正规住宿发票；超标需主管或课题负责人审批并说明原因。",
+    "content": "因公务或科研出差产生的住宿费用应按单位或项目规定的城市级别限额执行，例如：一线城市上限较高、二线城市如400元/晚、其他地区适当降低。报销时必须提供真实、合法、与住宿城市和日期相匹配的住宿发票，不得使用他人或历史发票。因会议指定酒店、展会期间房价上涨等原因导致超出标准的，应事先或事后取得主管/课题负责人书面或系统内审批，并在报销单中说明具体原因。",
+    "expense_type": ["lodging"],
+    "scene": ["business_trip"],
+    "org_scope": ["enterprise", "university_lab"],
+    "funding_scope": ["all"],
+    "risk_tags": ["over_limit", "invoice_required"],
+    "severity_default": "HIGH"
+  },
+  {
+    "id": "flight_class_and_change",
+    "title": "机票舱位与改签规定",
+    "summary": "公务或科研出差原则上乘坐经济舱，升舱或全价舱需事先审批；因公务变更导致改签或退票可报销，因个人原因产生的改签退票费用一般不予报销。",
+    "content": "员工因公务或科研项目出差乘坐飞机原则上应选择经济舱或单位允许的最低舱位，除非公司或项目另有书面规定。升舱、购买全价机票或临近起飞购买高价机票需要事先获得主管或课题负责人审批并保留记录。因会议时间调整、客户行程变更等公务原因产生的改签费、退票费可以按规定报销，并在备注中说明原因；因个人原因（如私事、迟到等）导致的改签或退票费用一般不得列入报销。",
+    "expense_type": ["flight"],
+    "scene": ["business_trip"],
+    "org_scope": ["enterprise", "university_lab"],
+    "funding_scope": ["all"],
+    "risk_tags": ["class_limit", "change_fee"],
+    "severity_default": "HIGH"
+  },
+  {
+    "id": "per_diem_vs_actual_meals",
+    "title": "出差补贴与实际餐费不得重复报销",
+    "summary": "若已按天数领取出差补贴（餐补/市内交通补助），对应区间内的同类实际票据不得再次报销，除非制度另有例外约定。",
+    "content": "当单位或项目对差旅实行按天发放的补贴制度（如餐补、市内交通补助）时，员工在领取相应补贴的日期区间内，同类性质的实际发生票据一般不得重复报销，以避免补贴与实报叠加。若制度允许在特定场景下叠加（如接待客户用餐、会议统一用餐），应在政策中明确说明，并在报销备注中标注具体事由。",
+    "expense_type": ["meals", "allowance"],
+    "scene": ["business_trip"],
+    "org_scope": ["enterprise", "university_lab"],
+    "funding_scope": ["all"],
+    "risk_tags": ["double_dipping"],
+    "severity_default": "MEDIUM"
+  },
+  {
+    "id": "lab_consumables_scope",
+    "title": "实验耗材报销范围与合理性",
+    "summary": "实验耗材应与课题或实验内容直接相关，不得混入与科研无关的日用品或与项目无关的物品；大额或批量采购需说明用途并保留领用记录。",
+    "content": "科研或教学实验产生的试剂、耗材、一次性器具等支出，应与对应课题或实验内容具有直接关系，不得将与科研无关的日用品、生活用品或私人物品混入实验耗材票据报销。单笔金额较大、批量采购或可长期使用的物品应在报销说明中写明具体用途和使用项目，必要时需建立领用或出入库记录，以备事后审计。",
+    "expense_type": ["lab_consumables"],
+    "scene": ["lab_operation"],
+    "org_scope": ["university_lab"],
+    "funding_scope": ["project", "lab_fund"],
+    "risk_tags": ["personal_consumption", "scope_mismatch"],
+    "severity_default": "HIGH"
+  },
+  {
+    "id": "equipment_asset_threshold",
+    "title": "科研设备固定资产与招标要求",
+    "summary": "单价或总价超过单位固定资产或招标额度阈值的设备，应按采购制度走立项、比价或招投标流程，不得拆单规避。",
+    "content": "对于科研设备、仪器等长期使用资产，当单台单价或同一批次总价超过单位规定的固定资产认定或招标额度阈值时，应按照单位采购制度完成立项、比价、论证或招投标等程序，不得通过拆分为多张小额发票等方式规避审批与采购流程。报销或合同付款时，应附相关审批文件或采购平台记录。",
+    "expense_type": ["equipment"],
+    "scene": ["lab_equipment_purchase"],
+    "org_scope": ["university_lab"],
+    "funding_scope": ["project", "lab_fund"],
+    "risk_tags": ["split_invoice", "procurement_process"],
+    "severity_default": "HIGH"
+  },
+  {
+    "id": "funding_misalignment",
+    "title": "经费科目与支出用途匹配",
+    "summary": "报销支出用途应与经费来源和预算科目匹配，禁止用科研经费报销明显与科研无关的个人消费或福利。",
+    "content": "任何报销支出都应与其经费来源（如纵向课题、横向课题、校内科研启动经费、实验室建设经费等）和预算科目保持一致。不得用科研经费报销明显与科研工作无关的个人消费、礼品、纯娱乐支出等，也不得在生活补贴、奖金等项目上变相使用科研经费。对于边界模糊的支出，应在报销备注中充分说明其与课题或项目的关联性，并在必要时取得课题负责人书面认可。",
+    "expense_type": ["general"],
+    "scene": ["all"],
+    "org_scope": ["enterprise", "university_lab"],
+    "funding_scope": ["project", "lab_fund"],
+    "risk_tags": ["funding_mismatch", "personal_consumption"],
+    "severity_default": "HIGH"
+  },
+  {
+    "id": "timely_submission",
+    "title": "报销时效要求",
+    "summary": "报销申请应在费用发生后一定期限内提交（例如3个月内）；超期报销需说明原因并可能由单位视情况不予受理。",
+    "content": "为保证财务核算及时和经费管理合规，报销人应在费用实际发生之日起一定期限（如3个月或一个财务季度）内完成报销申请。超出规定期限才提交的报销，财务或项目负责人可以要求提供额外说明，并有权依据单位制度决定是否受理或部分受理。长期滞后报销会影响预算执行与审计，属于风险点。",
+    "expense_type": ["all"],
+    "scene": ["all"],
+    "org_scope": ["enterprise", "university_lab"],
+    "funding_scope": ["all"],
+    "risk_tags": ["late_submission"],
+    "severity_default": "MEDIUM"
+  },
+  {
+    "id": "invoice_authenticity",
+    "title": "发票真实性与抬头要求",
+    "summary": "报销发票应真实合法、与实际交易对手及金额一致；抬头一般为单位或项目要求的名称，抬头错误或发票疑似虚假时需重点核查。",
+    "content": "所有用于报销的发票、收据等票据必须来源合法、内容真实，金额、日期、项目名称应与实际发生的交易一致。发票抬头通常应为单位全称或经费管理部门认可的名称，特殊情况下使用个人抬头或第三方抬头时，应在报销说明中写明原因并征得财务或项目负责人的同意。对于发票版式异常、抬头明显不符、金额与同行业价格严重偏离等情况，应视为高风险，需要进一步核查或拒绝报销。",
+    "expense_type": ["all"],
+    "scene": ["all"],
+    "org_scope": ["enterprise", "university_lab"],
+    "funding_scope": ["all"],
+    "risk_tags": ["invoice_required", "invoice_suspicious"],
+    "severity_default": "HIGH"
+  }
+]
