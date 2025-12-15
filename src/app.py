@@ -5,6 +5,11 @@ import json
 import logging
 import os
 from typing import Any, Dict
+<<<<<<< HEAD
+=======
+from decimal import Decimal
+from pathlib import Path
+>>>>>>> 4fbaa5a (first commit)
 from decimal import Decimal
 from pathlib import Path
 
@@ -50,6 +55,11 @@ from services.user_service import (
     login_or_register,
 )
 from utils.file_ops import save_base64_file
+<<<<<<< HEAD
+=======
+from openpyxl import Workbook, load_workbook
+from datetime import datetime
+>>>>>>> 4fbaa5a (first commit)
 from openpyxl import Workbook, load_workbook
 from datetime import datetime
 
@@ -197,6 +207,7 @@ def list_invoices() -> Any:
     q = request.args.get("q", "")
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
+<<<<<<< HEAD
     with db_session() as session:
         query = session.query(Document)
         # 时间区间过滤（基于创建时间）
@@ -227,6 +238,41 @@ def list_invoices() -> Any:
                 | (Document.category.ilike(like_q))
             )
         query = query.order_by(Document.created_at.desc())
+=======
+    q = request.args.get("q", "")
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    with db_session() as session:
+        query = session.query(Document)
+        # 时间区间过滤（基于创建时间）
+        if start_date:
+            try:
+                from datetime import datetime
+
+                sd = datetime.fromisoformat(start_date)
+                query = query.filter(Document.created_at >= sd)
+            except Exception:
+                pass
+        if end_date:
+            try:
+                from datetime import datetime
+
+                ed = datetime.fromisoformat(end_date)
+                query = query.filter(Document.created_at <= ed)
+            except Exception:
+                pass
+        if user_id:
+            query = query.filter(Document.user_id == user_id)
+        # 简单关键字搜索：文件名 / vendor / category / raw_result JSON 包含
+        if q:
+            like_q = f"%{q}%"
+            query = query.filter(
+                (Document.file_name.ilike(like_q))
+                | (Document.vendor.ilike(like_q))
+                | (Document.category.ilike(like_q))
+            )
+        query = query.order_by(Document.created_at.desc())
+>>>>>>> 4fbaa5a (first commit)
         docs = query.all()
         result = []
         for doc in docs:
@@ -249,6 +295,16 @@ def list_invoices() -> Any:
                 # 有时 issue_date 在 structured_fields 或 top-level 字段
                 if not issue_date:
                     issue_date = raw.get("structured_fields", {}).get("issue_date")
+<<<<<<< HEAD
+=======
+            # 尝试提取发票自身的开票/日期字段（可能在 raw 的不同位置）
+            issue_date = None
+            if isinstance(raw, dict):
+                issue_date = raw.get("issue_date") or raw.get("normalized_fields", {}).get("issue_date")
+                # 有时 issue_date 在 structured_fields 或 top-level 字段
+                if not issue_date:
+                    issue_date = raw.get("structured_fields", {}).get("issue_date")
+>>>>>>> 4fbaa5a (first commit)
             voucher_path = raw.get("voucher_pdf_path")
             voucher_url = url_for("get_voucher_pdf", doc_id=doc.id) if voucher_path else None
             result.append(
@@ -257,6 +313,10 @@ def list_invoices() -> Any:
                     "file_name": doc.file_name,
                     "vendor": doc.vendor,
                     "issue_date": issue_date,
+<<<<<<< HEAD
+=======
+                    "issue_date": issue_date,
+>>>>>>> 4fbaa5a (first commit)
                     "amount": doc.amount,
                     "tax_amount": doc.tax_amount,
                     "currency": doc.currency,
