@@ -25,8 +25,13 @@ class LLMClient:
             "temperature": kwargs.get("temperature", 0.2),
             "max_tokens": kwargs.get("max_tokens", 512),
         }
-        if kwargs.get("response_format"):
-            params["response_format"] = kwargs["response_format"]
+        response_format = kwargs.get("response_format")
+        if response_format:
+            if isinstance(response_format, str):
+                rf_lower = response_format.lower()
+                if rf_lower in {"json", "json_object"}:
+                    response_format = {"type": "json_object"}
+            params["response_format"] = response_format
 
         response = self.client.chat.completions.create(**params)
         return response.choices[0].message.content.strip()

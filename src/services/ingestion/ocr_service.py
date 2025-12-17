@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -11,6 +12,9 @@ from config import get_settings
 from llm_client import LLMClient
 from models.schemas import OCRSpan
 from services.ingestion.baidu_invoice_ocr import BaiduInvoiceOCRClient
+from services.ingestion.baidu_multi_invoice_ocr import BaiduMultipleInvoiceClient
+
+logger = logging.getLogger(__name__)
 
 try:  # 可选依赖，缺失时自动跳过增强处理
     import cv2  # type: ignore
@@ -37,16 +41,34 @@ class MultiEngineOCRService:
             self.baidu_client = BaiduInvoiceOCRClient.from_settings()
         except Exception:
             self.baidu_client = None
+        try:
+            self.baidu_multi_client = BaiduMultipleInvoiceClient.from_settings()
+        except Exception:
+            self.baidu_multi_client = None
 
     def recognize(self, ingestion_payload: Dict[str, Any]) -> Dict[str, Any]:
         original_file = Path(ingestion_payload["file_path"])
         pages = ingestion_payload.get("pages") or []
         page_results: List[Dict[str, Any]] = []
+        errors: list[str] = []
+
+        if not self.endpoints and not self.baidu_client:
+            logger.warning("OCR 未配置：缺少 OCR_ENDPOINTS 或 Baidu 凭证，返回占位文本")
 
         for idx, page in enumerate(pages):
             page_path = Path(page.get("image_path") or original_file)
             image_bytes, _ = self._prepare_image_bytes(page_path)
             candidates = []
+
+            # 优先：百度多票据智能识别，一次自动分类13类票据
+            if self.baidu_multi_client:
+                try:
+                    multi = self._request_baidu_multi(image_bytes)
+                    candidates.append(multi)
+                except Exception as exc:
+                    msg = f"Baidu multiple_invoice 调用失败: {exc}"
+                    errors.append(msg)
+                    logger.warning(msg)
 
             for endpoint in self.endpoints:
                 try:
@@ -65,12 +87,25 @@ class MultiEngineOCRService:
             if self.baidu_client:
                 try:
                     candidates.append(self._request_baidu(image_bytes))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    msg = f"Baidu OCR 调用失败: {exc}"
+                    errors.append(msg)
+                    logger.warning(msg)
 
             if ingestion_payload.get("text_blocks"):
                 baseline_text = ingestion_payload["text_blocks"][min(idx, len(ingestion_payload["text_blocks"]) - 1)]
                 candidates.append({"engine": "layout-text", "text": baseline_text, "confidence": 0.45})
+
+            if not candidates:
+                if errors:
+                    logger.warning("OCR 全部候选为空，错误: %s", "; ".join(errors))
+                candidates.append(
+                    {
+                        "engine": "not_configured",
+                        "text": "未配置 OCR_ENDPOINTS 或 Baidu OCR，无法识别文本",
+                        "confidence": 0.0,
+                    }
+                )
 
             fused = self._fuse_candidates(candidates)
             spans = [
@@ -99,6 +134,7 @@ class MultiEngineOCRService:
             "text": full_text,
             "confidence": round(avg_conf, 4),
             "spans": spans,
+            "errors": errors,
         }
 
     def _request_ocr(self, endpoint: str, image_bytes: bytes, file_name: str) -> Dict[str, Any]:
@@ -119,8 +155,24 @@ class MultiEngineOCRService:
     def _request_baidu(self, image_bytes: bytes) -> Dict[str, Any]:
         if not self.baidu_client:
             raise RuntimeError("Baidu OCR 未配置")
-        result = self.baidu_client.recognize(image_bytes)
+        result = self.baidu_client.recognize_smart(image_bytes)
         return {"engine": result["engine"], "text": result["text"], "confidence": result.get("confidence", 0.8)}
+
+    def _request_baidu_multi(self, image_bytes: bytes) -> Dict[str, Any]:
+        if not self.baidu_multi_client:
+            raise RuntimeError("Baidu 多票据OCR 未配置")
+        result = self.baidu_multi_client.recognize(image_bytes)
+        # 保留类型提示在 text 前缀，便于调试/展示
+        invoice_type = result.get("fields", {}).get("invoice_type")
+        text = result["text"]
+        if invoice_type:
+            text = f"[{invoice_type}] {text}"
+        return {
+            "engine": result["engine"],
+            "text": text,
+            "confidence": result.get("confidence", 0.85),
+            "fields": result.get("fields", {}),
+        }
 
     # ---------- 图像准备与旋转纠偏 ---------- #
     def _prepare_image_bytes(self, image_path: Path) -> Tuple[bytes, float]:

@@ -37,7 +37,7 @@ from services.ingestion.ingestion_service import DocumentIngestionService
 from services.ingestion.ocr_service import MultiEngineOCRService
 from services.accounting.journal_service import JournalEntryService
 from services.policy_rag.policy_service import PolicyValidationService
-from services.accounting.persistence_service import persist_results
+from services.accounting.persistence_service import persist_results, _generate_voucher_pdf
 from services.analytics.report_service import ReportService
 from services.accounting.ai_accountant import FinancialReportService
 from database import db_session
@@ -326,6 +326,69 @@ def get_voucher_pdf(doc_id: str) -> Any:
         if not path or not os.path.exists(path):
             return jsonify({"success": False, "error": "voucher_not_found"}), 404
         return send_file(path, as_attachment=True, download_name=f"{doc_id}.pdf")
+
+
+@app.post("/api/v1/invoices/<doc_id>/voucher/generate")
+def generate_voucher(doc_id: str) -> Any:
+    """按需重新生成/补生成记账凭证 PDF。"""
+    try:
+        with db_session() as session:
+            doc = session.query(Document).filter_by(id=doc_id).first()
+            if not doc:
+                return jsonify({"success": False, "error": "not_found"}), 404
+
+            raw = doc.raw_result or {}
+            # 构造 DocumentResult 用于已有的生成函数
+            issue_date = (
+                raw.get("issue_date")
+                or raw.get("normalized_fields", {}).get("issue_date")
+                or raw.get("structured_fields", {}).get("issue_date")
+                or (doc.created_at.date().isoformat() if doc.created_at else None)
+            )
+            from models.schemas import DocumentResult
+
+            doc_result = DocumentResult(
+                document_id=doc.id,
+                file_name=doc.file_name,
+                vendor=doc.vendor,
+                currency=doc.currency or "CNY",
+                total_amount=doc.amount,
+                tax_amount=doc.tax_amount,
+                issue_date=issue_date,
+                category=doc.category,
+                structured_fields=raw.get("structured_fields") or {},
+                normalized_fields=raw.get("normalized_fields") or {},
+                ocr_confidence=raw.get("ocr_confidence") or 0.0,
+                ocr_spans=raw.get("ocr_spans") or [],
+                policy_flags=[],
+                anomalies=[],
+                duplicate_candidates=[],
+                reasoning_trace=[],
+                journal_entries=[],
+            )
+            entries = [
+                {
+                    "debit_account": le.debit_account,
+                    "credit_account": le.credit_account,
+                    "amount": le.amount,
+                    "memo": le.memo,
+                }
+                for le in doc.ledger_entries
+            ]
+
+            voucher_path = _generate_voucher_pdf(doc_result, entries)
+            if not voucher_path:
+                return jsonify({"success": False, "error": "generate_failed"}), 500
+
+            raw["voucher_pdf_path"] = str(voucher_path)
+            # 直接 update JSON，避免部分环境下 JSON attr 未检测到变更
+            session.query(Document).filter_by(id=doc.id).update({Document.raw_result: raw})
+
+            voucher_url = url_for("get_voucher_pdf", doc_id=doc.id)
+            return jsonify({"success": True, "voucher_pdf_url": voucher_url})
+    except Exception as exc:
+        logging.exception("generate voucher api failed: %s", doc_id)
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @app.post("/api/v1/reports/financial")

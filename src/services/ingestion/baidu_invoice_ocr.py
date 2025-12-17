@@ -14,6 +14,9 @@ from config import get_settings
 
 TOKEN_URL = "https://aip.baidubce.com/oauth/2.0/token"
 OCR_URL = "https://aip.baidubce.com/rest/2.0/ocr/v1/vat_invoice"
+TAXI_URL = "https://aip.baidubce.com/rest/2.0/ocr/v1/taxi_receipt"
+TRAIN_URL = "https://aip.baidubce.com/rest/2.0/ocr/v1/train_ticket"
+GENERAL_URL = "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"
 
 
 class BaiduOCRException(Exception):
@@ -38,6 +41,7 @@ class BaiduInvoiceOCRClient:
         return cls(settings.baidu_app_id, settings.baidu_api_key, settings.baidu_secret_key)
 
     def recognize(self, file: Union[Path, bytes, BinaryIO]) -> Dict[str, Any]:
+        """兼容旧接口：直接按增值税入口调用，失败时降级通用。"""
         token = self._access_token()
         image_bytes = self._read_bytes(file)
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
@@ -47,31 +51,61 @@ class BaiduInvoiceOCRClient:
             "multi_detect": "true",
         }
         try:
-            response = self._session.post(
-                f"{OCR_URL}?access_token={token}",
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data=data,
-                timeout=30,
-            )
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            raise BaiduOCRException(f"请求百度OCR失败: {exc}") from exc
+            payload = self._call_api(OCR_URL, token, data)
+        except BaiduOCRException as exc:
+            if "282103" in str(exc) or "failed to match the template" in str(exc):
+                payload = self._call_general(token, image_b64)
+            else:
+                raise
+        return self._package_payload(payload)
 
-        payload = response.json()
-        if "error_code" in payload:
-            raise BaiduOCRException(f"Baidu OCR error {payload.get('error_code')}: {payload.get('error_msg')}")
+    def recognize_smart(self, file: Union[Path, bytes, BinaryIO]) -> Dict[str, Any]:
+        """
+        先通用OCR获取文本做类型判定，再分流到增值税/出租车/火车票接口，最后兜底通用。
+        """
+        token = self._access_token()
+        image_bytes = self._read_bytes(file)
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        text, fields = self._extract_text_and_fields(payload)
-        confidence = self._extract_confidence(payload)
+        # 1) 通用文字识别
+        general_payload = self._call_general(token, image_b64)
+        general_text, _ = self._extract_text_and_fields(general_payload)
+        doc_type = self._classify_doc_type(general_text)
 
-        return {
-            "engine": "baidu_invoice_ocr",
-            "text": text,
-            "confidence": confidence,
-            "fields": fields,
-            "raw": payload,
-            "app_id": self.app_id,
-        }
+        # 2) 分流
+        if doc_type == "taxi":
+            try:
+                specific = self._call_api(TAXI_URL, token, {"image": image_b64})
+                specific["engine"] = "baidu_taxi_receipt"
+                return self._package_payload(specific)
+            except Exception:
+                pass
+        elif doc_type == "train":
+            try:
+                specific = self._call_api(TRAIN_URL, token, {"image": image_b64})
+                specific["engine"] = "baidu_train_ticket"
+                return self._package_payload(specific)
+            except Exception:
+                pass
+        else:
+            try:
+                specific = self._call_api(
+                    OCR_URL,
+                    token,
+                    {
+                        "image": image_b64,
+                        "accuracy": "high",
+                        "multi_detect": "true",
+                    },
+                )
+                specific["engine"] = "baidu_invoice_ocr"
+                return self._package_payload(specific)
+            except Exception:
+                pass
+
+        # 3) 兜底用通用结果
+        general_payload["engine"] = "baidu_general_basic"
+        return self._package_payload(general_payload)
 
     def _extract_text_and_fields(self, payload: Dict[str, Any]) -> tuple[str, Dict[str, str]]:
         words_result = payload.get("words_result", [])
@@ -107,6 +141,29 @@ class BaiduInvoiceOCRClient:
 
         return text, fields
 
+    def _call_api(self, url: str, token: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            response = self._session.post(
+                f"{url}?access_token={token}",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data=data,
+                timeout=30,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise BaiduOCRException(f"请求百度OCR失败: {exc}") from exc
+
+        payload = response.json()
+        if "error_code" in payload:
+            raise BaiduOCRException(f"Baidu OCR error {payload.get('error_code')}: {payload.get('error_msg')}")
+        return payload
+
+    def _call_general(self, token: str, image_b64: str) -> Dict[str, Any]:
+        """通用文字识别：用于前置分类或兜底。"""
+        payload = self._call_api(GENERAL_URL, token, {"image": image_b64})
+        payload["engine"] = "baidu_general_basic"
+        return payload
+
     @staticmethod
     def _extract_confidence(payload: Dict[str, Any]) -> float:
         prob = payload.get("probability")
@@ -115,7 +172,30 @@ class BaiduInvoiceOCRClient:
                 return float(prob.get("average", 0.0))
             except (TypeError, ValueError):
                 return 0.0
+        # 通用文字识别无 probability 字段，给一个保守默认值以避免被 layout-text 低信度覆盖
+        if payload.get("engine") == "baidu_general_basic":
+            return 0.8
         return 0.0
+
+    def _classify_doc_type(self, text: str) -> str:
+        t = text or ""
+        if any(k in t for k in ["出租车", "出租汽车", "上车时间", "下车时间", "车牌号", "单价", "里程"]):
+            return "taxi"
+        if any(k in t for k in ["火车", "车次", "动车", "高铁", "检票口", "始发站", "到达站"]):
+            return "train"
+        return "vat"
+
+    def _package_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        text, fields = self._extract_text_and_fields(payload)
+        confidence = self._extract_confidence(payload)
+        return {
+            "engine": payload.get("engine", "baidu_invoice_ocr"),
+            "text": text,
+            "confidence": confidence,
+            "fields": fields,
+            "raw": payload,
+            "app_id": self.app_id,
+        }
 
     def _read_bytes(self, file: Union[Path, bytes, BinaryIO]) -> bytes:
         if isinstance(file, Path):

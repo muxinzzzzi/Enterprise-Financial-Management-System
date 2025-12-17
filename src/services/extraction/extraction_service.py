@@ -28,7 +28,7 @@ class FieldExtractionService:
                 ],
                 max_tokens=1200,
                 temperature=0,
-                response_format="json",
+                response_format={"type": "json_object"},
             )
             data = json.loads(self._extract_json_block(reply))
         except json.JSONDecodeError as exc:

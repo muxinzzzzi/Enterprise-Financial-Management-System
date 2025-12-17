@@ -487,6 +487,19 @@ th {
   color: var(--muted);
 }
 
+.invoice-tabs {
+  margin-bottom: 12px;
+}
+
+.invoice-pane {
+  display: none;
+  margin-top: 8px;
+}
+
+.invoice-pane.active {
+  display: block;
+}
+
 .login-body {
   background: radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.25), transparent 30%),
     radial-gradient(circle at 80% 10%, rgba(14, 165, 233, 0.28), transparent 30%),
@@ -528,4 +541,43 @@ th {
 
 .dashboard-body {
   background: #f5f7fb;
+}
+
+/* 全局加载遮罩（生成凭证等长操作） */
+.loading-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  color: #fff;
+  font-size: 15px;
+  backdrop-filter: blur(2px);
+}
+
+.loading-box {
+  background: rgba(0, 0, 0, 0.65);
+  padding: 16px 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

@@ -140,8 +140,13 @@
             </div>
           </header>
 
-          <section class="card two-col">
-            <div>
+          <section class="card">
+            <div class="tabs invoice-tabs">
+              <button data-invoice-tab="upload" class="active">上传发票</button>
+              <button data-invoice-tab="list">已生成凭证</button>
+            </div>
+
+            <div data-invoice-pane="upload" class="invoice-pane active">
               <h3>上传发票</h3>
               <form id="upload-form" class="stacked">
                 <label class="file-input">
@@ -154,65 +159,45 @@
                     <div id="upload-progress" class="progress-bar"></div>
                   </div>
                 </div>
-                <label>
-                  元数据 (可选)
-                  <textarea id="meta" placeholder='{"user_email":"boss@example.com"}'></textarea>
-                </label>
-                <label>
-                  自定义政策 (可选)
-                  <textarea id="policies" placeholder='[{"title":"差旅制度","content":"单次餐费≤200"}]'></textarea>
-                </label>
                 <button type="submit">上传并对账</button>
               </form>
+              <section class="card surface" style="margin-top:12px;">
+                <h4 style="margin:0 0 8px;">OCR 识别结果</h4>
+                <pre id="ocr-preview" class="surface small" style="min-height:120px; padding:12px;">等待上传后显示...</pre>
+              </section>
             </div>
-            <div>
+
+            <div data-invoice-pane="list" class="invoice-pane">
               <h3>已生成凭证</h3>
+              <p class="hint">上传后自动生成凭证 PDF，可在“凭证 PDF”列点击预览。</p>
               <div class="table-wrap">
-<<<<<<< HEAD
+                <div class="invoice-controls">
+                  <input id="invoice-search" placeholder="搜索文件名/供应商/分类" />
+                  <input id="invoice-start" type="date" />
+                  <input id="invoice-end" type="date" />
+                  <button id="invoice-search-btn" type="button" class="ghost">筛选</button>
+                  <button id="invoice-clear-btn" type="button" class="ghost">清除</button>
+                </div>
                 <table id="invoice-table">
                   <thead>
                     <tr>
                       <th>文件</th>
                       <th>供应商</th>
+                      <th>发票时间</th>
                       <th>金额</th>
                       <th>分类</th>
+                      <th>创建时间</th>
                       <th>状态</th>
-                      <th>凭证</th>
-=======
-                  <div class="invoice-controls">
-                    <input id="invoice-search" placeholder="搜索文件名/供应商/分类" />
-                    <input id="invoice-start" type="date" />
-                    <input id="invoice-end" type="date" />
-                    <button id="invoice-search-btn" class="ghost">筛选</button>
-                    <button id="invoice-clear-btn" class="ghost">清除</button>
-                  </div>
-                  <table id="invoice-table">
-                  <thead>
-                    <tr>
-                        <th><input type="checkbox" id="select-all-invoices" /></th>
-                        <th>文件</th>
-                        <th>供应商</th>
-                        <th>发票时间</th>
-                        <th>金额</th>
-                        <th>分类</th>
-                        <th>创建时间</th>
-                        <th>状态</th>
-                        <th>预览</th>
-                        <th>发票</th>
-                        <th>操作</th>
->>>>>>> 4fbaa5a (first commit)
+                      <th>预览</th>
+                      <th>发票</th>
+                      <th>凭证 PDF</th>
+                      <th>操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colspan="6">加载中...</td></tr>
+                    <tr><td colspan="11">加载中...</td></tr>
                   </tbody>
                 </table>
-<<<<<<< HEAD
-=======
-                <div style="margin-top:8px;">
-                  <button id="generate-excel-btn" class="primary">生成凭证（Excel）</button>
-                </div>
->>>>>>> 4fbaa5a (first commit)
               </div>
             </div>
           </section>
