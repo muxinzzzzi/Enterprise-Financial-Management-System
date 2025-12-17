@@ -457,6 +457,201 @@ const fetchCurrentUser = async () => {
   }
 };
 
+// 报表相关元素
+const reportTabButtons = document.querySelectorAll('[data-report-tab]');
+const reportPanes = document.querySelectorAll('[data-report-pane]');
+const invoiceAuditForm = document.getElementById('invoice-audit-form');
+const periodSummaryForm = document.getElementById('period-summary-form');
+const auditTrailForm = document.getElementById('audit-trail-form');
+const allReportsForm = document.getElementById('all-reports-form');
+const allReportTabButtons = document.querySelectorAll('[data-all-report-tab]');
+const allReportContents = document.querySelectorAll('[data-all-report-content]');
+
+// 报表标签切换
+const switchReportTab = (tab) => {
+  reportTabButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.reportTab === tab));
+  reportPanes.forEach((pane) => pane.classList.toggle('active', pane.dataset.reportPane === tab));
+};
+
+reportTabButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    switchReportTab(btn.dataset.reportTab);
+  });
+});
+
+// 所有报表内容标签切换
+const switchAllReportTab = (tab) => {
+  allReportTabButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.allReportTab === tab));
+  allReportContents.forEach((content) => content.classList.toggle('active', content.dataset.allReportContent === tab));
+};
+
+allReportTabButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    switchAllReportTab(btn.dataset.allReportTab);
+  });
+});
+
+// 单张票据审核报告
+invoiceAuditForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const docId = document.getElementById('invoice-audit-doc-id').value.trim();
+  const saveFile = document.getElementById('invoice-audit-save').checked;
+  const loadingEl = document.getElementById('invoice-audit-loading');
+  const outputEl = document.getElementById('invoice-audit-output');
+
+  if (!docId) {
+    alert('请输入票据ID');
+    return;
+  }
+
+  try {
+    loadingEl.style.display = 'block';
+    outputEl.textContent = '生成中...';
+    const resp = await fetch('/api/v1/reports/invoice_audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_id: docId, save_file: saveFile }),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || '生成失败');
+    outputEl.innerHTML = window.marked.parse(data.report);
+    loadingEl.style.display = 'none';
+  } catch (error) {
+    outputEl.textContent = `错误: ${error.message || error}`;
+    loadingEl.style.display = 'none';
+  }
+});
+
+// 周期汇总报表
+periodSummaryForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const startDate = document.getElementById('period-summary-start').value;
+  const endDate = document.getElementById('period-summary-end').value;
+  const periodType = document.getElementById('period-summary-type').value;
+  const periodLabel = document.getElementById('period-summary-label').value.trim();
+  const saveFile = document.getElementById('period-summary-save').checked;
+  const loadingEl = document.getElementById('period-summary-loading');
+  const outputEl = document.getElementById('period-summary-output');
+
+  try {
+    loadingEl.style.display = 'block';
+    outputEl.textContent = '生成中...';
+    const payload = { period_type: periodType, save_file: saveFile };
+    if (startDate) payload.start_date = startDate;
+    if (endDate) payload.end_date = endDate;
+    if (periodLabel) payload.period_label = periodLabel;
+    const resp = await fetch('/api/v1/reports/period_summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || '生成失败');
+    outputEl.innerHTML = window.marked.parse(data.report);
+    loadingEl.style.display = 'none';
+  } catch (error) {
+    outputEl.textContent = `错误: ${error.message || error}`;
+    loadingEl.style.display = 'none';
+  }
+});
+
+// 审计追溯与整改清单
+auditTrailForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const startDate = document.getElementById('audit-trail-start').value;
+  const endDate = document.getElementById('audit-trail-end').value;
+  const saveFile = document.getElementById('audit-trail-save').checked;
+  const loadingEl = document.getElementById('audit-trail-loading');
+  const outputEl = document.getElementById('audit-trail-output');
+
+  try {
+    loadingEl.style.display = 'block';
+    outputEl.textContent = '生成中...';
+    const payload = { save_file: saveFile };
+    if (startDate) payload.start_date = startDate;
+    if (endDate) payload.end_date = endDate;
+    const resp = await fetch('/api/v1/reports/audit_trail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || '生成失败');
+    outputEl.innerHTML = window.marked.parse(data.report);
+    loadingEl.style.display = 'none';
+  } catch (error) {
+    outputEl.textContent = `错误: ${error.message || error}`;
+    loadingEl.style.display = 'none';
+  }
+});
+
+// 生成所有报表
+allReportsForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const startDate = document.getElementById('all-reports-start').value;
+  const endDate = document.getElementById('all-reports-end').value;
+  const periodType = document.getElementById('all-reports-type').value;
+  const periodLabel = document.getElementById('all-reports-label').value.trim();
+  const saveFiles = document.getElementById('all-reports-save').checked;
+  const loadingEl = document.getElementById('all-reports-loading');
+  const periodEl = document.getElementById('all-reports-period');
+  const trailEl = document.getElementById('all-reports-trail');
+  const invoicesEl = document.getElementById('all-reports-invoices');
+
+  try {
+    loadingEl.style.display = 'block';
+    periodEl.textContent = '生成中...';
+    trailEl.textContent = '生成中...';
+    invoicesEl.innerHTML = '<p class="hint">生成中...</p>';
+    const payload = { period_type: periodType, save_files: saveFiles };
+    if (startDate) payload.start_date = startDate;
+    if (endDate) payload.end_date = endDate;
+    if (periodLabel) payload.period_label = periodLabel;
+    const resp = await fetch('/api/v1/reports/all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || '生成失败');
+    
+    // 显示周期汇总报表
+    if (data.reports.period_summary) {
+      periodEl.innerHTML = window.marked.parse(data.reports.period_summary);
+    }
+    
+    // 显示审计追溯清单
+    if (data.reports.audit_trail) {
+      trailEl.innerHTML = window.marked.parse(data.reports.audit_trail);
+    }
+    
+    // 显示单张票据报告
+    if (data.reports.invoice_reports && Object.keys(data.reports.invoice_reports).length > 0) {
+      const invoiceReports = data.reports.invoice_reports;
+      const invoiceList = Object.entries(invoiceReports).map(([docId, report]) => {
+        return `
+          <div style="margin-bottom: 16px; border: 1px solid #e5e7eb; padding: 12px; border-radius: 4px;">
+            <h4 style="margin: 0 0 8px;">票据ID: ${docId}</h4>
+            <div class="markdown-body surface" style="max-height: 300px; overflow-y: auto;">
+              ${window.marked.parse(report)}
+            </div>
+          </div>
+        `;
+      }).join('');
+      invoicesEl.innerHTML = invoiceList;
+    } else {
+      invoicesEl.innerHTML = '<p class="hint">无单张票据报告（票据数量可能超过50张）</p>';
+    }
+    
+    loadingEl.style.display = 'none';
+  } catch (error) {
+    periodEl.textContent = `错误: ${error.message || error}`;
+    trailEl.textContent = `错误: ${error.message || error}`;
+    invoicesEl.innerHTML = `<p class="hint">错误: ${error.message || error}</p>`;
+    loadingEl.style.display = 'none';
+  }
+});
+
 window.addEventListener('load', async () => {
   await fetchCurrentUser();
   initCharts();

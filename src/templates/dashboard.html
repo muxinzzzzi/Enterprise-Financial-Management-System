@@ -208,32 +208,183 @@
           <header class="topbar">
             <div>
               <p class="eyebrow">财务报表</p>
-              <h2>按月/季/年编制</h2>
-              <p class="hint">基于账务数据，调用 LLM 生成报表与分析</p>
+              <h2>智能报表生成</h2>
+              <p class="hint">生成三类报表：单张票据审核报告、周期汇总报表、审计追溯与整改清单</p>
             </div>
           </header>
 
-          <section class="card two-col">
-            <div>
-              <h3>生成报表</h3>
-              <form id="report-form" class="stacked">
-                <label>期间类型
-                  <select id="report-period">
-                    <option value="month">月度</option>
-                    <option value="quarter">季度</option>
-                    <option value="year">年度</option>
+          <!-- 报表类型选择 -->
+          <section class="card">
+            <div class="tabs report-tabs">
+              <button data-report-tab="invoice-audit" class="active">单张票据审核报告</button>
+              <button data-report-tab="period-summary">周期汇总报表</button>
+              <button data-report-tab="audit-trail">审计追溯与整改清单</button>
+              <button data-report-tab="all-reports">生成所有报表</button>
+            </div>
+          </section>
+
+          <!-- 单张票据审核报告 -->
+          <div data-report-pane="invoice-audit" class="report-pane active">
+            <section class="card two-col">
+              <div>
+                <h3>生成单张票据审核报告</h3>
+                <form id="invoice-audit-form" class="stacked">
+                  <label>票据ID
+                    <input type="text" id="invoice-audit-doc-id" placeholder="doc_xxx" required />
+                    <small class="hint">从发票管理页面获取票据ID</small>
+                  </label>
+                  <label>
+                    <input type="checkbox" id="invoice-audit-save" checked />
+                    保存为文件
+                  </label>
+                  <button type="submit">生成报告</button>
+                </form>
+              </div>
+              <div>
+                <h3>报告结果</h3>
+                <div id="invoice-audit-loading" class="hint" style="display:none;">生成中...</div>
+                <article id="invoice-audit-output" class="markdown-body surface" style="max-height:600px;overflow-y:auto;">等待生成...</article>
+              </div>
+            </section>
+          </div>
+
+          <!-- 周期汇总报表 -->
+          <div data-report-pane="period-summary" class="report-pane">
+            <section class="card two-col">
+              <div>
+                <h3>生成周期汇总报表</h3>
+                <form id="period-summary-form" class="stacked">
+                  <label>开始日期
+                    <input type="date" id="period-summary-start" />
+                  </label>
+                  <label>结束日期
+                    <input type="date" id="period-summary-end" />
+                  </label>
+                  <label>周期类型
+                    <select id="period-summary-type">
+                      <option value="月">月报</option>
+                      <option value="周">周报</option>
+                      <option value="项目">项目报</option>
+                    </select>
+                  </label>
+                  <label>周期标签
+                    <input type="text" id="period-summary-label" placeholder="如：2025年10期" />
+                  </label>
+                  <label>
+                    <input type="checkbox" id="period-summary-save" checked />
+                    保存为文件
+                  </label>
+                  <button type="submit">生成报表</button>
+                </form>
+              </div>
+              <div>
+                <h3>报表结果</h3>
+                <div id="period-summary-loading" class="hint" style="display:none;">生成中...</div>
+                <article id="period-summary-output" class="markdown-body surface" style="max-height:600px;overflow-y:auto;">等待生成...</article>
+              </div>
+            </section>
+          </div>
+
+          <!-- 审计追溯与整改清单 -->
+          <div data-report-pane="audit-trail" class="report-pane">
+            <section class="card two-col">
+              <div>
+                <h3>生成审计追溯与整改清单</h3>
+                <form id="audit-trail-form" class="stacked">
+                  <label>开始日期
+                    <input type="date" id="audit-trail-start" />
+                  </label>
+                  <label>结束日期
+                    <input type="date" id="audit-trail-end" />
+                  </label>
+                  <label>
+                    <input type="checkbox" id="audit-trail-save" checked />
+                    保存为文件
+                  </label>
+                  <button type="submit">生成清单</button>
+                </form>
+              </div>
+              <div>
+                <h3>清单结果</h3>
+                <div id="audit-trail-loading" class="hint" style="display:none;">生成中...</div>
+                <article id="audit-trail-output" class="markdown-body surface" style="max-height:600px;overflow-y:auto;">等待生成...</article>
+              </div>
+            </section>
+          </div>
+
+          <!-- 生成所有报表 -->
+          <div data-report-pane="all-reports" class="report-pane">
+            <section class="card">
+              <h3>生成所有报表</h3>
+              <form id="all-reports-form" class="stacked">
+                <label>开始日期
+                  <input type="date" id="all-reports-start" />
+                </label>
+                <label>结束日期
+                  <input type="date" id="all-reports-end" />
+                </label>
+                <label>周期类型
+                  <select id="all-reports-type">
+                    <option value="月">月报</option>
+                    <option value="周">周报</option>
+                    <option value="项目">项目报</option>
                   </select>
                 </label>
-                <label>参考日期
-                  <input type="date" id="report-date" />
+                <label>周期标签
+                  <input type="text" id="all-reports-label" placeholder="如：2025年10期" />
                 </label>
-                <button type="submit">生成报表</button>
+                <label>
+                  <input type="checkbox" id="all-reports-save" checked />
+                  保存为文件
+                </label>
+                <button type="submit">生成所有报表</button>
               </form>
-            </div>
-            <div>
-              <h3>报表结果</h3>
-              <article id="report-output" class="markdown-body surface">等待生成...</article>
-              <pre id="report-summary" class="surface small">--</pre>
+              <div id="all-reports-loading" class="hint" style="display:none;margin-top:16px;">生成中，请稍候...</div>
+              <div id="all-reports-output" style="margin-top:16px;">
+                <div class="tabs">
+                  <button data-all-report-tab="period" class="active">周期汇总报表</button>
+                  <button data-all-report-tab="trail">审计追溯清单</button>
+                  <button data-all-report-tab="invoices">单张票据报告</button>
+                </div>
+                <div data-all-report-content="period" class="report-content active">
+                  <article id="all-reports-period" class="markdown-body surface" style="max-height:600px;overflow-y:auto;margin-top:12px;">等待生成...</article>
+                </div>
+                <div data-all-report-content="trail" class="report-content">
+                  <article id="all-reports-trail" class="markdown-body surface" style="max-height:600px;overflow-y:auto;margin-top:12px;">等待生成...</article>
+                </div>
+                <div data-all-report-content="invoices" class="report-content">
+                  <div id="all-reports-invoices" style="margin-top:12px;">
+                    <p class="hint">单张票据报告将显示在这里（如果票据数量≤50）</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- 传统财务报表（保留） -->
+          <section class="card" style="margin-top:24px;">
+            <h3>传统财务报表（按月/季/年编制）</h3>
+            <div class="card two-col">
+              <div>
+                <form id="report-form" class="stacked">
+                  <label>期间类型
+                    <select id="report-period">
+                      <option value="month">月度</option>
+                      <option value="quarter">季度</option>
+                      <option value="year">年度</option>
+                    </select>
+                  </label>
+                  <label>参考日期
+                    <input type="date" id="report-date" />
+                  </label>
+                  <button type="submit">生成报表</button>
+                </form>
+              </div>
+              <div>
+                <h3>报表结果</h3>
+                <article id="report-output" class="markdown-body surface">等待生成...</article>
+                <pre id="report-summary" class="surface small">--</pre>
+              </div>
             </div>
           </section>
         </div>

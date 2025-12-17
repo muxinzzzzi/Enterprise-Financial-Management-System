@@ -4,7 +4,7 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List
 from decimal import Decimal
 from pathlib import Path
 
@@ -39,9 +39,11 @@ from services.accounting.journal_service import JournalEntryService
 from services.policy_rag.policy_service import PolicyValidationService
 from services.accounting.persistence_service import persist_results, _generate_voucher_pdf
 from services.analytics.report_service import ReportService
+from services.analytics.advanced_report_service import AdvancedReportService
 from services.accounting.ai_accountant import FinancialReportService
 from database import db_session
 from models.db_models import Document, LedgerEntry
+from models.schemas import DocumentResult, PolicyFlag
 from services.user_service import (
     authenticate,
     create_user,
@@ -82,6 +84,11 @@ services = {
     "feedback": FeedbackService(),
     "report": ReportService(llm_client),
 }
+
+# 初始化高级报表服务
+advanced_report_service = AdvancedReportService(
+    llm_client, output_dir=DATA_DIR / "reports"
+)
 
 pipeline = ReconciliationPipeline(**services)
 audit_logger = AuditLogger(DATA_DIR / "cache" / "audit.log")
@@ -582,6 +589,375 @@ def assistant_query() -> Any:
         return jsonify({"success": False, "error": "question 不能为空"}), 400
     result = assistant_service.query(question=question, user_id=user_id, days=days)
     return jsonify({"success": True, **result})
+
+
+@app.post("/api/v1/reports/invoice_audit")
+def generate_invoice_audit_report() -> Any:
+    """生成单张票据审核报告。
+    
+    请求体: {
+        "document_id": "doc_xxx",
+        "save_file": true  // 可选，是否保存文件
+    }
+    """
+    data = request.get_json(force=True)
+    document_id = data.get("document_id")
+    save_file = data.get("save_file", True)
+
+    if not document_id:
+        return jsonify({"success": False, "error": "document_id 必填"}), 400
+
+    try:
+        with db_session() as session:
+            doc = session.query(Document).filter(Document.id == document_id).first()
+            if not doc:
+                return jsonify({"success": False, "error": "票据不存在"}), 404
+
+            # 从raw_result中提取数据
+            raw_result = doc.raw_result or {}
+            
+            # 构建DocumentResult
+            document_result = DocumentResult(
+                document_id=doc.id,
+                file_name=doc.file_name,
+                vendor=doc.vendor,
+                currency=doc.currency,
+                total_amount=doc.amount,
+                tax_amount=doc.tax_amount,
+                issue_date=raw_result.get("issue_date") or raw_result.get("normalized_fields", {}).get("issue_date"),
+                category=doc.category,
+                structured_fields=raw_result.get("structured_fields", {}),
+                normalized_fields=raw_result.get("normalized_fields", {}),
+                ocr_confidence=raw_result.get("ocr_confidence", 0.0),
+                policy_flags=[PolicyFlag(**flag) if isinstance(flag, dict) else flag 
+                             for flag in raw_result.get("policy_flags", [])],
+                anomalies=raw_result.get("anomalies", []),
+                duplicate_candidates=raw_result.get("duplicate_candidates", []),
+            )
+
+            # 提取数据
+            policy_flags = document_result.policy_flags
+            anomalies = document_result.anomalies
+            duplicate_candidates = document_result.duplicate_candidates
+
+            # 生成报告
+            report = advanced_report_service.generate_invoice_audit_report(
+                document_result, policy_flags, anomalies, duplicate_candidates, save_file
+            )
+
+            return jsonify({"success": True, "report": report, "document_id": document_id})
+    except Exception as e:
+        logging.exception("生成单张票据审核报告失败")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.post("/api/v1/reports/period_summary")
+def generate_period_summary_report() -> Any:
+    """生成周期汇总报表。
+    
+    请求体: {
+        "start_date": "2025-01-01",  // 可选
+        "end_date": "2025-01-31",    // 可选
+        "user_id": "usr_xxx",        // 可选
+        "period_type": "月",          // 可选，默认"月"
+        "period_label": "2025年10期",  // 可选
+        "save_file": true            // 可选
+    }
+    """
+    data = request.get_json(force=True) or {}
+    start_date = data.get("start_date")
+    end_date = data.get("end_date")
+    user_id = data.get("user_id") or session.get("user_id")
+    period_type = data.get("period_type", "月")
+    period_label = data.get("period_label", "")
+    save_file = data.get("save_file", True)
+
+    try:
+        from datetime import datetime
+
+        with db_session() as session:
+            query = session.query(Document)
+
+            # 时间过滤
+            if start_date:
+                try:
+                    sd = datetime.fromisoformat(start_date)
+                    query = query.filter(Document.created_at >= sd)
+                except Exception:
+                    pass
+            if end_date:
+                try:
+                    ed = datetime.fromisoformat(end_date)
+                    query = query.filter(Document.created_at <= ed)
+                except Exception:
+                    pass
+
+            # 用户过滤
+            if user_id:
+                query = query.filter(Document.user_id == user_id)
+
+            docs = query.order_by(Document.created_at.desc()).all()
+
+            # 转换为DocumentResult并提取数据
+            documents = []
+            all_policy_flags: Dict[str, List[PolicyFlag]] = {}
+            all_anomalies: Dict[str, List[str]] = {}
+            all_duplicates: Dict[str, List[str]] = {}
+
+            for doc in docs:
+                raw_result = doc.raw_result or {}
+                
+                document_result = DocumentResult(
+                    document_id=doc.id,
+                    file_name=doc.file_name,
+                    vendor=doc.vendor,
+                    currency=doc.currency,
+                    total_amount=doc.amount,
+                    tax_amount=doc.tax_amount,
+                    issue_date=raw_result.get("issue_date") or raw_result.get("normalized_fields", {}).get("issue_date"),
+                    category=doc.category,
+                    structured_fields=raw_result.get("structured_fields", {}),
+                    normalized_fields=raw_result.get("normalized_fields", {}),
+                    ocr_confidence=raw_result.get("ocr_confidence", 0.0),
+                    policy_flags=[],
+                    anomalies=[],
+                    duplicate_candidates=[],
+                )
+
+                documents.append(document_result)
+                
+                # 提取policy_flags, anomalies, duplicates
+                policy_flags = [
+                    PolicyFlag(**flag) if isinstance(flag, dict) else flag
+                    for flag in raw_result.get("policy_flags", [])
+                ]
+                all_policy_flags[doc.id] = policy_flags
+                all_anomalies[doc.id] = raw_result.get("anomalies", [])
+                all_duplicates[doc.id] = raw_result.get("duplicate_candidates", [])
+
+            # 生成报告
+            report = advanced_report_service.generate_period_summary_report(
+                documents,
+                all_policy_flags,
+                all_anomalies,
+                all_duplicates,
+                period_type,
+                period_label,
+                save_file,
+            )
+
+            return jsonify({
+                "success": True,
+                "report": report,
+                "document_count": len(documents),
+                "period_type": period_type,
+                "period_label": period_label,
+            })
+    except Exception as e:
+        logging.exception("生成周期汇总报表失败")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.post("/api/v1/reports/audit_trail")
+def generate_audit_trail_report() -> Any:
+    """生成审计追溯与整改清单。
+    
+    请求体: {
+        "start_date": "2025-01-01",  // 可选
+        "end_date": "2025-01-31",    // 可选
+        "user_id": "usr_xxx",        // 可选
+        "save_file": true            // 可选
+    }
+    """
+    data = request.get_json(force=True) or {}
+    start_date = data.get("start_date")
+    end_date = data.get("end_date")
+    user_id = data.get("user_id") or session.get("user_id")
+    save_file = data.get("save_file", True)
+
+    try:
+        from datetime import datetime
+
+        with db_session() as session:
+            query = session.query(Document)
+
+            # 时间过滤
+            if start_date:
+                try:
+                    sd = datetime.fromisoformat(start_date)
+                    query = query.filter(Document.created_at >= sd)
+                except Exception:
+                    pass
+            if end_date:
+                try:
+                    ed = datetime.fromisoformat(end_date)
+                    query = query.filter(Document.created_at <= ed)
+                except Exception:
+                    pass
+
+            # 用户过滤
+            if user_id:
+                query = query.filter(Document.user_id == user_id)
+
+            docs = query.order_by(Document.created_at.desc()).all()
+
+            # 转换为DocumentResult并提取数据
+            documents = []
+            all_policy_flags: Dict[str, List[PolicyFlag]] = {}
+            all_anomalies: Dict[str, List[str]] = {}
+            all_duplicates: Dict[str, List[str]] = {}
+
+            for doc in docs:
+                raw_result = doc.raw_result or {}
+                
+                document_result = DocumentResult(
+                    document_id=doc.id,
+                    file_name=doc.file_name,
+                    vendor=doc.vendor,
+                    currency=doc.currency,
+                    total_amount=doc.amount,
+                    tax_amount=doc.tax_amount,
+                    issue_date=raw_result.get("issue_date") or raw_result.get("normalized_fields", {}).get("issue_date"),
+                    category=doc.category,
+                    structured_fields=raw_result.get("structured_fields", {}),
+                    normalized_fields=raw_result.get("normalized_fields", {}),
+                    ocr_confidence=raw_result.get("ocr_confidence", 0.0),
+                    policy_flags=[],
+                    anomalies=[],
+                    duplicate_candidates=[],
+                )
+
+                documents.append(document_result)
+                
+                # 提取policy_flags, anomalies, duplicates
+                policy_flags = [
+                    PolicyFlag(**flag) if isinstance(flag, dict) else flag
+                    for flag in raw_result.get("policy_flags", [])
+                ]
+                all_policy_flags[doc.id] = policy_flags
+                all_anomalies[doc.id] = raw_result.get("anomalies", [])
+                all_duplicates[doc.id] = raw_result.get("duplicate_candidates", [])
+
+            # 生成报告
+            report = advanced_report_service.generate_audit_trail_report(
+                documents, all_policy_flags, all_anomalies, all_duplicates, save_file
+            )
+
+            return jsonify({
+                "success": True,
+                "report": report,
+                "document_count": len(documents),
+            })
+    except Exception as e:
+        logging.exception("生成审计追溯与整改清单失败")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.post("/api/v1/reports/all")
+def generate_all_reports() -> Any:
+    """生成所有三类报表。
+    
+    请求体: {
+        "start_date": "2025-01-01",  // 可选
+        "end_date": "2025-01-31",    // 可选
+        "user_id": "usr_xxx",        // 可选
+        "period_type": "月",          // 可选
+        "period_label": "2025年10期",  // 可选
+        "save_files": true           // 可选
+    }
+    """
+    data = request.get_json(force=True) or {}
+    start_date = data.get("start_date")
+    end_date = data.get("end_date")
+    user_id = data.get("user_id") or session.get("user_id")
+    period_type = data.get("period_type", "月")
+    period_label = data.get("period_label", "")
+    save_files = data.get("save_files", True)
+
+    try:
+        from datetime import datetime
+
+        with db_session() as session:
+            query = session.query(Document)
+
+            # 时间过滤
+            if start_date:
+                try:
+                    sd = datetime.fromisoformat(start_date)
+                    query = query.filter(Document.created_at >= sd)
+                except Exception:
+                    pass
+            if end_date:
+                try:
+                    ed = datetime.fromisoformat(end_date)
+                    query = query.filter(Document.created_at <= ed)
+                except Exception:
+                    pass
+
+            # 用户过滤
+            if user_id:
+                query = query.filter(Document.user_id == user_id)
+
+            docs = query.order_by(Document.created_at.desc()).all()
+
+            # 转换为DocumentResult并提取数据
+            documents = []
+            all_policy_flags: Dict[str, List[PolicyFlag]] = {}
+            all_anomalies: Dict[str, List[str]] = {}
+            all_duplicates: Dict[str, List[str]] = {}
+
+            for doc in docs:
+                raw_result = doc.raw_result or {}
+                
+                document_result = DocumentResult(
+                    document_id=doc.id,
+                    file_name=doc.file_name,
+                    vendor=doc.vendor,
+                    currency=doc.currency,
+                    total_amount=doc.amount,
+                    tax_amount=doc.tax_amount,
+                    issue_date=raw_result.get("issue_date") or raw_result.get("normalized_fields", {}).get("issue_date"),
+                    category=doc.category,
+                    structured_fields=raw_result.get("structured_fields", {}),
+                    normalized_fields=raw_result.get("normalized_fields", {}),
+                    ocr_confidence=raw_result.get("ocr_confidence", 0.0),
+                    policy_flags=[],
+                    anomalies=[],
+                    duplicate_candidates=[],
+                )
+
+                documents.append(document_result)
+                
+                # 提取policy_flags, anomalies, duplicates
+                policy_flags = [
+                    PolicyFlag(**flag) if isinstance(flag, dict) else flag
+                    for flag in raw_result.get("policy_flags", [])
+                ]
+                all_policy_flags[doc.id] = policy_flags
+                all_anomalies[doc.id] = raw_result.get("anomalies", [])
+                all_duplicates[doc.id] = raw_result.get("duplicate_candidates", [])
+
+            # 生成所有报告
+            reports = advanced_report_service.generate_all_reports(
+                documents,
+                all_policy_flags,
+                all_anomalies,
+                all_duplicates,
+                period_type,
+                period_label,
+                save_files,
+            )
+
+            return jsonify({
+                "success": True,
+                "reports": reports,
+                "document_count": len(documents),
+                "period_type": period_type,
+                "period_label": period_label,
+            })
+    except Exception as e:
+        logging.exception("生成所有报表失败")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.errorhandler(Exception)
