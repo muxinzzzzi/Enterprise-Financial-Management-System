@@ -616,19 +616,26 @@ def generate_invoice_audit_report() -> Any:
             # 从raw_result中提取数据
             raw_result = doc.raw_result or {}
             
+            # 确保数值字段不为 None
+            amount = doc.amount if doc.amount is not None else 0.0
+            tax_amount = doc.tax_amount if doc.tax_amount is not None else 0.0
+            ocr_confidence = raw_result.get("ocr_confidence")
+            if ocr_confidence is None or not isinstance(ocr_confidence, (int, float)):
+                ocr_confidence = 0.0
+            
             # 构建DocumentResult
             document_result = DocumentResult(
                 document_id=doc.id,
                 file_name=doc.file_name,
                 vendor=doc.vendor,
                 currency=doc.currency,
-                total_amount=doc.amount,
-                tax_amount=doc.tax_amount,
+                total_amount=amount,
+                tax_amount=tax_amount,
                 issue_date=raw_result.get("issue_date") or raw_result.get("normalized_fields", {}).get("issue_date"),
                 category=doc.category,
                 structured_fields=raw_result.get("structured_fields", {}),
                 normalized_fields=raw_result.get("normalized_fields", {}),
-                ocr_confidence=raw_result.get("ocr_confidence", 0.0),
+                ocr_confidence=ocr_confidence,
                 policy_flags=[PolicyFlag(**flag) if isinstance(flag, dict) else flag 
                              for flag in raw_result.get("policy_flags", [])],
                 anomalies=raw_result.get("anomalies", []),
@@ -675,8 +682,8 @@ def generate_period_summary_report() -> Any:
     try:
         from datetime import datetime
 
-        with db_session() as session:
-            query = session.query(Document)
+        with db_session() as db:
+            query = db.query(Document)
 
             # 时间过滤
             if start_date:
@@ -696,7 +703,13 @@ def generate_period_summary_report() -> Any:
             if user_id:
                 query = query.filter(Document.user_id == user_id)
 
+            # 添加调试信息：查询总数
+            total_count = db.query(Document).count()
+            filtered_count = query.count()
+            
             docs = query.order_by(Document.created_at.desc()).all()
+            
+            logging.info(f"周期报表查询: 总记录数={total_count}, 过滤后记录数={filtered_count}, 时间范围={start_date}~{end_date}, 用户ID={user_id}")
 
             # 转换为DocumentResult并提取数据
             documents = []
@@ -877,8 +890,8 @@ def generate_all_reports() -> Any:
     try:
         from datetime import datetime
 
-        with db_session() as session:
-            query = session.query(Document)
+        with db_session() as db:
+            query = db.query(Document)
 
             # 时间过滤
             if start_date:
@@ -898,7 +911,13 @@ def generate_all_reports() -> Any:
             if user_id:
                 query = query.filter(Document.user_id == user_id)
 
+            # 添加调试信息：查询总数
+            total_count = db.query(Document).count()
+            filtered_count = query.count()
+            
             docs = query.order_by(Document.created_at.desc()).all()
+            
+            logging.info(f"所有报表查询: 总记录数={total_count}, 过滤后记录数={filtered_count}, 时间范围={start_date}~{end_date}, 用户ID={user_id}")
 
             # 转换为DocumentResult并提取数据
             documents = []

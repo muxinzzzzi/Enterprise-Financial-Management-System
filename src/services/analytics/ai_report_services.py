@@ -93,17 +93,28 @@ class DecisionSummaryService:
 
     def _build_prompt(self, payload: Dict[str, Any]) -> str:
         """构建提示词。"""
+        # 安全地获取数值，确保不是 None
+        amount = payload.get('amount') or 0
+        tax_amount = payload.get('tax_amount') or 0
+        ocr_confidence = payload.get('ocr_confidence') or 0
+        if not isinstance(amount, (int, float)):
+            amount = 0
+        if not isinstance(tax_amount, (int, float)):
+            tax_amount = 0
+        if not isinstance(ocr_confidence, (int, float)):
+            ocr_confidence = 0
+        
         return f"""
 请基于以下票据数据生成审核结论：
 
 **票据信息：**
 - 文件名：{payload.get('file_name', 'N/A')}
 - 供应商：{payload.get('vendor', 'N/A')}
-- 金额：{payload.get('amount', 0):.2f}
-- 税额：{payload.get('tax_amount', 0):.2f}
+- 金额：{amount:.2f}
+- 税额：{tax_amount:.2f}
 - 类别：{payload.get('category', 'N/A')}
 - 开票日期：{payload.get('issue_date', 'N/A')}
-- OCR置信度：{payload.get('ocr_confidence', 0):.2f}
+- OCR置信度：{ocr_confidence:.2f}
 
 **政策规则校验结果：**
 {json.dumps(payload.get('policy_flags', []), ensure_ascii=False, indent=2)}
@@ -274,6 +285,11 @@ class IssueAttributionService:
     def _build_prompt(self, payload: Dict[str, Any]) -> str:
         """构建提示词。"""
         taxonomy_str = "\n".join(f"- {issue}" for issue in self.ISSUE_TAXONOMY)
+        
+        # 安全地获取数值，确保不是 None
+        amount = payload.get('amount') or 0
+        if not isinstance(amount, (int, float)):
+            amount = 0
 
         return f"""
 请将以下票据的问题归类到预定义的问题体系：
@@ -281,7 +297,7 @@ class IssueAttributionService:
 **票据信息：**
 - 文件名：{payload.get('file_name', 'N/A')}
 - 供应商：{payload.get('vendor', 'N/A')}
-- 金额：{payload.get('amount', 0):.2f}
+- 金额：{amount:.2f}
 - 类别：{payload.get('category', 'N/A')}
 
 **政策规则校验结果：**

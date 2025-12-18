@@ -125,7 +125,7 @@ const previewSelectedFile = (file) => {
 const renderInvoiceTable = (rows = []) => {
   if (!invoiceTableBody) return;
   if (!rows.length) {
-    invoiceTableBody.innerHTML = '<tr><td colspan="11">暂无数据</td></tr>';
+    invoiceTableBody.innerHTML = '<tr><td colspan="12">暂无数据</td></tr>';
     return;
   }
   const html = rows
@@ -147,8 +147,13 @@ const renderInvoiceTable = (rows = []) => {
       const deleteBtn = row.id
         ? `<button type="button" data-action="delete-invoice" data-id="${row.id}" class="ghost" style="margin-left:6px;">删除</button>`
         : '';
+      // ID列：显示可复制的ID，方便用户使用
+      const idCell = row.id
+        ? `<code style="font-size: 0.85em; background: #f3f4f6; padding: 2px 6px; border-radius: 3px; cursor: pointer;" title="点击复制" onclick="navigator.clipboard.writeText('${row.id}').then(() => alert('已复制ID: ${row.id}'))">${row.id}</code>`
+        : '<span class="hint">--</span>';
       return `
         <tr>
+          <td>${idCell}</td>
           <td>${row.file_name || '--'}</td>
           <td>${row.vendor || '--'}</td>
           <td>${row.issue_date || '--'}</td>
