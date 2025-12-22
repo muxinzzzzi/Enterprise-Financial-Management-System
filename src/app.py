@@ -37,10 +37,16 @@ from services.ingestion.ingestion_service import DocumentIngestionService
 from services.ingestion.ocr_service import MultiEngineOCRService
 from services.accounting.journal_service import JournalEntryService
 from services.policy_rag.policy_service import PolicyValidationService
-from services.accounting.persistence_service import persist_results, _generate_voucher_pdf
+from services.accounting.persistence_service import (
+    persist_results,
+    _generate_voucher_pdf,
+    generate_combined_voucher,
+)
 from services.analytics.report_service import ReportService
 from services.analytics.advanced_report_service import AdvancedReportService
-from services.accounting.ai_accountant import FinancialReportService
+from services.accounting.ai_accountant import FinancialReportService as LegacyFinancialReportService
+from services.financial_reports.report_service import FinancialReportService
+from models.financial_schemas import ReportConfig
 from database import db_session
 from models.db_models import Document, LedgerEntry
 from models.schemas import DocumentResult, PolicyFlag
@@ -70,7 +76,8 @@ journal_service = JournalEntryService(llm_client)
 assistant_service = AssistantService(llm_client)
 normalization_service = NormalizationService(settings=settings)
 analytics_service = AnalyticsService(llm_client, cache_limit=settings.analytics_cache_limit)
-financial_report_service = FinancialReportService()
+legacy_financial_report_service = LegacyFinancialReportService()
+financial_report_service = FinancialReportService(llm_client=llm_client)
 
 services = {
     "ingestion": DocumentIngestionService(),
@@ -398,6 +405,233 @@ def generate_voucher(doc_id: str) -> Any:
         return jsonify({"success": False, "error": str(exc)}), 500
 
 
+@app.post("/api/v1/invoices/batch_voucher/generate")
+def batch_generate_vouchers() -> Any:
+    """批量生成“合并凭证”：勾选多张发票 -> 生成一张凭证 PDF。"""
+    data = request.get_json(force=True)
+    invoice_ids = data.get("invoice_ids", [])
+    if not invoice_ids or not isinstance(invoice_ids, list):
+        return jsonify({"success": False, "error": "invoice_ids required"}), 400
+
+    try:
+        doc_results = []
+        all_entries = []
+        with db_session() as session:
+            docs = session.query(Document).filter(Document.id.in_(invoice_ids)).all()
+            if not docs:
+                return jsonify({"success": False, "error": "未找到发票"}), 404
+
+            for doc in docs:
+                raw = doc.raw_result or {}
+                issue_date = (
+                    raw.get("issue_date")
+                    or raw.get("normalized_fields", {}).get("issue_date")
+                    or raw.get("structured_fields", {}).get("issue_date")
+                    or (doc.created_at.date().isoformat() if doc.created_at else None)
+                )
+                doc_result = DocumentResult(
+                    document_id=doc.id,
+                    file_name=doc.file_name,
+                    vendor=doc.vendor,
+                    currency=doc.currency or "CNY",
+                    total_amount=doc.amount,
+                    tax_amount=doc.tax_amount,
+                    issue_date=issue_date,
+                    category=doc.category,
+                    structured_fields=raw.get("structured_fields") or {},
+                    normalized_fields=raw.get("normalized_fields") or {},
+                    ocr_confidence=raw.get("ocr_confidence") or 0.0,
+                    ocr_spans=raw.get("ocr_spans") or [],
+                    policy_flags=[],
+                    anomalies=[],
+                    duplicate_candidates=[],
+                    reasoning_trace=[],
+                    journal_entries=[],
+                )
+                entries = journal_service.generate(doc_result)
+                # 标记 memo，方便在 PDF 中区分来源
+                for e in entries:
+                    e["memo"] = e.get("memo") or doc.vendor or doc.file_name
+                doc_results.append(doc_result)
+                all_entries.extend(entries)
+
+            voucher_path, voucher_no, voucher_date = generate_combined_voucher(doc_results, all_entries)
+            if not voucher_path:
+                return jsonify({"success": False, "error": "生成凭证失败"}), 500
+
+            for doc in docs:
+                raw = doc.raw_result or {}
+                raw["voucher_pdf_path"] = str(voucher_path)
+                raw["voucher_no"] = voucher_no
+                raw["voucher_date"] = voucher_date
+                session.query(Document).filter_by(id=doc.id).update(
+                    {
+                        Document.raw_result: raw,
+                        Document.status: "voucher_generated",
+                    }
+                )
+
+        return jsonify(
+            {
+                "success": True,
+                "voucher_pdf_path": str(voucher_path),
+                "voucher_no": voucher_no,
+                "voucher_date": voucher_date,
+                "invoice_count": len(invoice_ids),
+            }
+        )
+    except Exception as exc:
+        logging.exception("batch generate vouchers api failed")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.get("/api/v1/vouchers")
+def list_vouchers() -> Any:
+    """获取凭证列表（合并凭证，按 voucher_pdf_path 聚合）。"""
+    user_id = request.args.get("user_id")
+    q = request.args.get("q", "")
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+
+    with db_session() as session:
+        query = session.query(Document).filter(Document.raw_result.isnot(None))
+
+        # 时间区间过滤
+        if start_date:
+            try:
+                from datetime import datetime
+                sd = datetime.fromisoformat(start_date)
+                query = query.filter(Document.created_at >= sd)
+            except Exception:
+                pass
+        if end_date:
+            try:
+                from datetime import datetime
+                ed = datetime.fromisoformat(end_date)
+                query = query.filter(Document.created_at <= ed)
+            except Exception:
+                pass
+        if user_id:
+            query = query.filter(Document.user_id == user_id)
+
+        # 关键字搜索
+        if q:
+            like_q = f"%{q}%"
+            query = query.filter(
+                (Document.file_name.ilike(like_q))
+                | (Document.vendor.ilike(like_q))
+                | (Document.category.ilike(like_q))
+            )
+
+        query = query.order_by(Document.created_at.desc())
+        docs = query.all()
+        grouped: dict[str, dict] = {}
+
+        for doc in docs:
+            raw = doc.raw_result or {}
+            voucher_path = raw.get("voucher_pdf_path")
+            if not voucher_path:
+                continue  # 只显示有凭证的
+
+            key = voucher_path
+            if key not in grouped:
+                grouped[key] = {
+                    "id": raw.get("voucher_no") or key,
+                    "invoice_ids": [],
+                    "total_amount": 0.0,
+                    "created_at": raw.get("voucher_date") or (doc.created_at.isoformat() if doc.created_at else None),
+                    "voucher_pdf_url": url_for("get_voucher_pdf", doc_id=doc.id),
+                    "voucher_excel_url": None,
+                    "invoices": [],
+                    "voucher_no": raw.get("voucher_no"),
+                    "voucher_date": raw.get("voucher_date"),
+                }
+            grouped[key]["invoice_ids"].append(doc.id)
+            grouped[key]["total_amount"] += float(doc.amount or 0.0)
+            grouped[key]["invoices"].append(
+                {
+                    "id": doc.id,
+                    "file_name": doc.file_name,
+                    "vendor": doc.vendor,
+                    "amount": doc.amount,
+                }
+            )
+
+        result = list(grouped.values())
+        # 按凭证号排序
+        result.sort(key=lambda x: (x.get("voucher_no") or 0))
+
+    return jsonify({"success": True, "data": result})
+
+
+@app.delete("/api/v1/vouchers")
+def delete_vouchers() -> Any:
+    """根据凭证号或包含的发票，删除已生成的凭证文件并解绑文档记录。"""
+    payload = request.get_json(silent=True) or {}
+    voucher_ids = payload.get("voucher_ids") or []
+    invoice_ids = payload.get("invoice_ids") or []
+
+    voucher_ids = [str(v).strip() for v in voucher_ids if str(v).strip()]
+    invoice_ids = [str(i).strip() for i in invoice_ids if str(i).strip()]
+
+    if not voucher_ids and not invoice_ids:
+        return jsonify({"success": False, "error": "voucher_ids or invoice_ids required"}), 400
+
+    removed_docs = 0
+    removed_files: set[str] = set()
+
+    with db_session() as session:
+        docs = session.query(Document).filter(Document.raw_result.isnot(None)).all()
+        for doc in docs:
+            raw = doc.raw_result or {}
+            voucher_path = raw.get("voucher_pdf_path")
+            voucher_no = raw.get("voucher_no")
+            voucher_excel_path = raw.get("voucher_excel_path")
+
+            has_voucher = bool(voucher_path or voucher_no)
+            if not has_voucher:
+                continue
+
+            path_stem = Path(voucher_path).stem if voucher_path else ""
+            matched = False
+            if voucher_ids:
+                if voucher_no and str(voucher_no) in voucher_ids:
+                    matched = True
+                if path_stem and path_stem in voucher_ids:
+                    matched = True
+            if not matched and invoice_ids and doc.id in invoice_ids:
+                matched = True
+
+            if not matched:
+                continue
+
+            if voucher_excel_path:
+                removed_files.add(str(voucher_excel_path))
+            if voucher_path:
+                removed_files.add(str(voucher_path))
+
+            raw.pop("voucher_pdf_path", None)
+            raw.pop("voucher_no", None)
+            raw.pop("voucher_date", None)
+            raw.pop("voucher_excel_path", None)
+            session.query(Document).filter_by(id=doc.id).update(
+                {
+                    Document.raw_result: raw,
+                    Document.status: "auto_recorded",
+                }
+            )
+            removed_docs += 1
+
+    for fp in removed_files:
+        try:
+            if fp and os.path.exists(fp):
+                os.remove(fp)
+        except Exception:
+            pass
+
+    return jsonify({"success": True, "removed": removed_docs, "files_removed": len(removed_files)})
+
+
 @app.post("/api/v1/reports/financial")
 def financial_report() -> Any:
     data = request.get_json(force=True)
@@ -415,8 +649,8 @@ def financial_report() -> Any:
             }
             for e in entries
         ]
-    summary = financial_report_service.generate_summary(rows, period=period, anchor_date=anchor)
-    narrative = financial_report_service.narrative(summary, llm_client)
+    summary = legacy_financial_report_service.generate_summary(rows, period=period, anchor_date=anchor)
+    narrative = legacy_financial_report_service.narrative(summary, llm_client)
     return jsonify({"success": True, "summary": summary, "report": narrative})
 
 
@@ -976,6 +1210,510 @@ def generate_all_reports() -> Any:
             })
     except Exception as e:
         logging.exception("生成所有报表失败")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.post("/api/v1/financial-reports/balance-sheet")
+def generate_balance_sheet() -> Any:
+    """生成资产负债表。
+    
+    请求体: {
+        "start_date": "2025-01-01",  // 可选
+        "end_date": "2025-01-31",    // 可选
+        "user_id": "usr_xxx",        // 可选
+        "period_type": "month",       // 可选：month/quarter/year
+        "currency": "CNY",            // 可选
+        "company_name": "公司名称",    // 可选
+        "enable_ai_analysis": false   // 可选
+    }
+    """
+    data = request.get_json(force=True) or {}
+    user_id = data.get("user_id") or session.get("user_id")
+    
+    try:
+        from datetime import datetime
+        
+        start_date = None
+        end_date = None
+        if data.get("start_date"):
+            start_date = datetime.fromisoformat(data["start_date"])
+        if data.get("end_date"):
+            end_date = datetime.fromisoformat(data["end_date"])
+        
+        config = ReportConfig(
+            start_date=start_date,
+            end_date=end_date,
+            period_type=data.get("period_type", "month"),
+            currency=data.get("currency", "CNY"),
+            user_id=user_id,
+            enable_ai_analysis=data.get("enable_ai_analysis", False),
+            company_name=data.get("company_name"),
+        )
+        
+        result = financial_report_service.generate_balance_sheet(config)
+        
+        # 保存markdown文件（服务层已生成PDF，这里只保存markdown）
+        markdown_path = None
+        if result.markdown_content:
+            try:
+                reports_dir = DATA_DIR / "reports" / "financial"
+                reports_dir.mkdir(parents=True, exist_ok=True)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                
+                # 保存markdown
+                md_filename = f"balance_sheet_{timestamp}.md"
+                markdown_path = reports_dir / md_filename
+                markdown_path.write_text(result.markdown_content, encoding="utf-8")
+                logging.info(f"资产负债表Markdown已保存: {markdown_path}")
+            except Exception as e:
+                logging.error(f"保存Markdown失败: {e}")
+        
+        # 使用服务层返回的PDF路径（服务层已生成PDF）
+        pdf_path = result.pdf_path
+        
+        return jsonify({
+            "success": True,
+            "report_type": result.report_type,
+            "report_data": result.report_data,
+            "markdown_content": result.markdown_content,
+            "markdown_path": str(markdown_path) if markdown_path else None,
+            "pdf_path": pdf_path,
+            "ai_analysis": result.ai_analysis,
+            "generated_at": result.generated_at.isoformat(),
+        })
+    except Exception as e:
+        logging.exception("生成资产负债表失败")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.post("/api/v1/financial-reports/income-statement")
+def generate_income_statement() -> Any:
+    """生成利润表。
+    
+    请求体: {
+        "start_date": "2025-01-01",  // 可选
+        "end_date": "2025-01-31",    // 可选
+        "user_id": "usr_xxx",        // 可选
+        "period_type": "month",       // 可选：month/quarter/year
+        "currency": "CNY",            // 可选
+        "company_name": "公司名称",    // 可选
+        "enable_ai_analysis": false   // 可选
+    }
+    """
+    data = request.get_json(force=True) or {}
+    user_id = data.get("user_id") or session.get("user_id")
+    
+    try:
+        from datetime import datetime
+        
+        start_date = None
+        end_date = None
+        if data.get("start_date"):
+            start_date = datetime.fromisoformat(data["start_date"])
+        if data.get("end_date"):
+            end_date = datetime.fromisoformat(data["end_date"])
+        
+        config = ReportConfig(
+            start_date=start_date,
+            end_date=end_date,
+            period_type=data.get("period_type", "month"),
+            currency=data.get("currency", "CNY"),
+            user_id=user_id,
+            enable_ai_analysis=data.get("enable_ai_analysis", False),
+            company_name=data.get("company_name"),
+        )
+        
+        result = financial_report_service.generate_income_statement(config)
+        
+        # 保存markdown文件（服务层已生成PDF，这里只保存markdown）
+        markdown_path = None
+        if result.markdown_content:
+            try:
+                reports_dir = DATA_DIR / "reports" / "financial"
+                reports_dir.mkdir(parents=True, exist_ok=True)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                
+                # 保存markdown
+                md_filename = f"income_statement_{timestamp}.md"
+                markdown_path = reports_dir / md_filename
+                markdown_path.write_text(result.markdown_content, encoding="utf-8")
+                logging.info(f"利润表Markdown已保存: {markdown_path}")
+            except Exception as e:
+                logging.error(f"保存Markdown失败: {e}")
+        
+        # 如果服务层没有生成PDF，在这里生成（利润表暂时使用markdown转换）
+        pdf_path = result.pdf_path
+        if not pdf_path and result.markdown_content:
+            try:
+                from services.financial_reports.exporters.pdf_exporter import PDFExporter
+                pdf_exporter = PDFExporter()
+                pdf_path = pdf_exporter.export_income_statement(result.markdown_content, config)
+                if pdf_path:
+                    logging.info(f"利润表PDF已生成: {pdf_path}")
+            except Exception as e:
+                logging.error(f"生成利润表PDF失败: {e}")
+        
+        return jsonify({
+            "success": True,
+            "report_type": result.report_type,
+            "report_data": result.report_data,
+            "markdown_content": result.markdown_content,
+            "markdown_path": str(markdown_path) if markdown_path else None,
+            "pdf_path": pdf_path,
+            "ai_analysis": result.ai_analysis,
+            "generated_at": result.generated_at.isoformat(),
+        })
+    except Exception as e:
+        logging.exception("生成利润表失败")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.post("/api/v1/financial-reports/cash-flow")
+def generate_cash_flow() -> Any:
+    """生成现金流量表。
+    
+    请求体: {
+        "start_date": "2025-01-01",  // 可选
+        "end_date": "2025-01-31",    // 可选
+        "user_id": "usr_xxx",        // 可选
+        "period_type": "month",       // 可选：month/quarter/year
+        "currency": "CNY",            // 可选
+        "company_name": "公司名称",    // 可选
+        "enable_ai_analysis": false   // 可选
+    }
+    """
+    data = request.get_json(force=True) or {}
+    user_id = data.get("user_id") or session.get("user_id")
+    
+    try:
+        from datetime import datetime
+        
+        start_date = None
+        end_date = None
+        if data.get("start_date"):
+            start_date = datetime.fromisoformat(data["start_date"])
+        if data.get("end_date"):
+            end_date = datetime.fromisoformat(data["end_date"])
+        
+        config = ReportConfig(
+            start_date=start_date,
+            end_date=end_date,
+            period_type=data.get("period_type", "month"),
+            currency=data.get("currency", "CNY"),
+            user_id=user_id,
+            enable_ai_analysis=data.get("enable_ai_analysis", False),
+            company_name=data.get("company_name"),
+        )
+        
+        result = financial_report_service.generate_cash_flow(config)
+        
+        # 保存markdown文件（服务层已生成PDF，这里只保存markdown）
+        markdown_path = None
+        if result.markdown_content:
+            try:
+                reports_dir = DATA_DIR / "reports" / "financial"
+                reports_dir.mkdir(parents=True, exist_ok=True)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                
+                # 保存markdown
+                md_filename = f"cash_flow_{timestamp}.md"
+                markdown_path = reports_dir / md_filename
+                markdown_path.write_text(result.markdown_content, encoding="utf-8")
+                logging.info(f"现金流量表Markdown已保存: {markdown_path}")
+            except Exception as e:
+                logging.error(f"保存Markdown失败: {e}")
+        
+        # 如果服务层没有生成PDF，在这里生成（现金流量表暂时使用markdown转换）
+        pdf_path = result.pdf_path
+        if not pdf_path and result.markdown_content:
+            try:
+                from services.financial_reports.exporters.pdf_exporter import PDFExporter
+                pdf_exporter = PDFExporter()
+                pdf_path = pdf_exporter.export_cash_flow(result.markdown_content, config)
+                if pdf_path:
+                    logging.info(f"现金流量表PDF已生成: {pdf_path}")
+            except Exception as e:
+                logging.error(f"生成现金流量表PDF失败: {e}")
+        
+        return jsonify({
+            "success": True,
+            "report_type": result.report_type,
+            "report_data": result.report_data,
+            "markdown_content": result.markdown_content,
+            "markdown_path": str(markdown_path) if markdown_path else None,
+            "pdf_path": pdf_path,
+            "ai_analysis": result.ai_analysis,
+            "generated_at": result.generated_at.isoformat(),
+        })
+    except Exception as e:
+        logging.exception("生成现金流量表失败")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.post("/api/v1/financial-reports/all")
+def generate_all_financial_reports() -> Any:
+    """生成所有三类财务报表。
+    
+    请求体: {
+        "start_date": "2025-01-01",  // 可选
+        "end_date": "2025-01-31",    // 可选
+        "user_id": "usr_xxx",        // 可选
+        "period_type": "month",       // 可选：month/quarter/year
+        "currency": "CNY",            // 可选
+        "company_name": "公司名称",    // 可选
+        "enable_ai_analysis": false   // 可选
+    }
+    """
+    data = request.get_json(force=True) or {}
+    user_id = data.get("user_id") or session.get("user_id")
+    
+    try:
+        from datetime import datetime
+        
+        start_date = None
+        end_date = None
+        if data.get("start_date"):
+            start_date = datetime.fromisoformat(data["start_date"])
+        if data.get("end_date"):
+            end_date = datetime.fromisoformat(data["end_date"])
+        
+        config = ReportConfig(
+            start_date=start_date,
+            end_date=end_date,
+            period_type=data.get("period_type", "month"),
+            currency=data.get("currency", "CNY"),
+            user_id=user_id,
+            enable_ai_analysis=data.get("enable_ai_analysis", False),
+            company_name=data.get("company_name"),
+        )
+        
+        results = financial_report_service.generate_all_reports(config)
+        
+        # 保存所有报表的markdown文件（服务层已生成PDF，这里只保存markdown）
+        saved_reports = {}
+        for report_type, result in results.items():
+            markdown_path = None
+            if result.markdown_content:
+                try:
+                    reports_dir = DATA_DIR / "reports" / "financial"
+                    reports_dir.mkdir(parents=True, exist_ok=True)
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    
+                    # 保存markdown
+                    md_filename = f"{report_type}_{timestamp}.md"
+                    markdown_path = reports_dir / md_filename
+                    markdown_path.write_text(result.markdown_content, encoding="utf-8")
+                    logging.info(f"{report_type} Markdown已保存: {markdown_path}")
+                except Exception as e:
+                    logging.error(f"保存{report_type} Markdown失败: {e}")
+            
+            # 使用服务层返回的PDF路径（服务层已生成PDF）
+            pdf_path = result.pdf_path
+            
+            # 如果服务层没有生成PDF，尝试生成（仅对利润表和现金流量表）
+            if not pdf_path and result.markdown_content:
+                try:
+                    from services.financial_reports.exporters.pdf_exporter import PDFExporter
+                    pdf_exporter = PDFExporter()
+                    if report_type == "income_statement":
+                        pdf_path = pdf_exporter.export_income_statement(result.markdown_content, config)
+                    elif report_type == "cash_flow":
+                        pdf_path = pdf_exporter.export_cash_flow(result.markdown_content, config)
+                    if pdf_path:
+                        logging.info(f"{report_type} PDF已生成: {pdf_path}")
+                except Exception as e:
+                    logging.error(f"生成{report_type} PDF失败: {e}")
+            
+            saved_reports[report_type] = {
+                "report_type": result.report_type,
+                "report_data": result.report_data,
+                "markdown_content": result.markdown_content,
+                "markdown_path": str(markdown_path) if markdown_path else None,
+                "pdf_path": pdf_path,
+                "ai_analysis": result.ai_analysis,
+                "generated_at": result.generated_at.isoformat(),
+            }
+        
+        return jsonify({
+            "success": True,
+            "reports": saved_reports,
+        })
+    except Exception as e:
+        logging.exception("生成所有财务报表失败")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.post("/api/v1/financial-reports/<report_type>/pdf")
+def generate_pdf(report_type: str) -> Any:
+    """生成PDF文件。
+    
+    report_type: balance-sheet / income-statement / cash-flow
+    """
+    data = request.get_json(force=True) or {}
+    user_id = data.get("user_id") or session.get("user_id")
+    
+    try:
+        from datetime import datetime
+        
+        start_date = None
+        end_date = None
+        if data.get("start_date"):
+            start_date = datetime.fromisoformat(data["start_date"])
+        if data.get("end_date"):
+            end_date = datetime.fromisoformat(data["end_date"])
+        
+        config = ReportConfig(
+            start_date=start_date,
+            end_date=end_date,
+            period_type=data.get("period_type", "month"),
+            currency=data.get("currency", "CNY"),
+            user_id=user_id,
+            enable_ai_analysis=False,
+            company_name=data.get("company_name"),
+        )
+        
+        # 生成报表
+        if report_type == "balance-sheet":
+            result = financial_report_service.generate_balance_sheet(config)
+        elif report_type == "income-statement":
+            result = financial_report_service.generate_income_statement(config)
+        elif report_type == "cash-flow":
+            result = financial_report_service.generate_cash_flow(config)
+        else:
+            return jsonify({"success": False, "error": f"未知的报表类型: {report_type}"}), 400
+        
+        # 生成PDF
+        pdf_path = None
+        if result.markdown_content:
+            try:
+                from services.financial_reports.exporters.pdf_exporter import PDFExporter
+                pdf_exporter = PDFExporter()
+                
+                if report_type == "balance-sheet":
+                    from models.financial_schemas import BalanceSheetData
+                    balance_sheet_data = BalanceSheetData(**result.report_data)
+                    # 如果启用AI分析，先生成分析
+                    ai_analysis = None
+                    if config.enable_ai_analysis:
+                        from services.financial_reports.ai_analyzer import AIAnalyzer
+                        ai_analyzer = AIAnalyzer(llm_client=llm_client)
+                        ai_analysis = ai_analyzer.analyze_balance_sheet(balance_sheet_data)
+                    pdf_path = pdf_exporter.export_balance_sheet(
+                        balance_sheet_data, 
+                        config, 
+                        ai_analysis=ai_analysis
+                    )
+                elif report_type == "income-statement":
+                    pdf_path = pdf_exporter.export_income_statement(result.markdown_content, config)
+                elif report_type == "cash-flow":
+                    pdf_path = pdf_exporter.export_cash_flow(result.markdown_content, config)
+                
+                if pdf_path:
+                    logging.info(f"{report_type} PDF已生成: {pdf_path}")
+            except Exception as e:
+                logging.error(f"生成PDF失败: {e}")
+        
+        return jsonify({
+            "success": True,
+            "pdf_path": pdf_path,
+            "markdown_path": str(DATA_DIR / "reports" / "financial" / f"{report_type.replace('-', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md") if result.markdown_content else None,
+        })
+    except Exception as e:
+        logging.exception(f"生成{report_type} PDF失败")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.get("/api/v1/financial-reports/pdf/<path:file_path>")
+def get_pdf(file_path: str) -> Any:
+    """获取PDF文件（预览或下载）。"""
+    try:
+        from urllib.parse import unquote
+        
+        # 解码文件路径
+        decoded_path = unquote(file_path)
+        file_path_obj = Path(decoded_path)
+        
+        # 安全检查：确保文件在reports目录下
+        reports_dir = DATA_DIR / "reports" / "financial"
+        if not str(file_path_obj).startswith(str(reports_dir)):
+            return jsonify({"success": False, "error": "无效的文件路径"}), 403
+        
+        # 如果文件不存在，返回404
+        if not file_path_obj.exists():
+            return jsonify({"success": False, "error": "文件不存在"}), 404
+        
+        # 检查是否是下载请求
+        download = request.args.get("download", "0") == "1"
+        
+        # 如果是PDF文件，直接返回
+        if file_path_obj.suffix.lower() == ".pdf":
+            return send_file(
+                str(file_path_obj),
+                mimetype="application/pdf",
+                as_attachment=download,
+                download_name=file_path_obj.name if download else None,
+            )
+        
+        # 如果是markdown文件，转换为PDF
+        if file_path_obj.suffix.lower() == ".md":
+            try:
+                from services.financial_reports.exporters.pdf_exporter import PDFExporter
+                from models.financial_schemas import ReportConfig
+                
+                # 读取markdown内容
+                markdown_content = file_path_obj.read_text(encoding="utf-8")
+                
+                # 生成PDF
+                pdf_exporter = PDFExporter()
+                pdf_path = file_path_obj.with_suffix('.pdf')
+                
+                # 根据文件名判断报表类型
+                filename = file_path_obj.stem
+                if 'balance_sheet' in filename:
+                    # 资产负债表使用markdown转换方法（因为这里只有markdown文件）
+                    pdf_path_str = pdf_exporter.export_balance_sheet_from_markdown(markdown_content, ReportConfig())
+                elif 'income_statement' in filename:
+                    pdf_path_str = pdf_exporter.export_income_statement(markdown_content, ReportConfig())
+                elif 'cash_flow' in filename:
+                    pdf_path_str = pdf_exporter.export_cash_flow(markdown_content, ReportConfig())
+                else:
+                    # 通用转换
+                    if pdf_exporter._markdown_to_pdf(markdown_content, pdf_path):
+                        pdf_path_str = str(pdf_path)
+                    else:
+                        raise Exception("PDF生成失败")
+                
+                if pdf_path_str and Path(pdf_path_str).exists():
+                    return send_file(
+                        pdf_path_str,
+                        mimetype="application/pdf",
+                        as_attachment=download,
+                        download_name=Path(pdf_path_str).name if download else None,
+                    )
+                else:
+                    raise Exception("PDF文件不存在")
+            except Exception as e:
+                logging.error(f"Markdown转PDF失败: {e}")
+                # 如果转换失败，返回markdown内容
+                if download:
+                    return send_file(
+                        str(file_path_obj),
+                        mimetype="text/markdown",
+                        as_attachment=True,
+                        download_name=file_path_obj.name,
+                    )
+                else:
+                    content = file_path_obj.read_text(encoding="utf-8")
+                    return jsonify({
+                        "success": True,
+                        "content": content,
+                        "type": "markdown",
+                        "error": str(e),
+                    })
+        
+        return jsonify({"success": False, "error": "不支持的文件类型"}), 400
+    except Exception as e:
+        logging.exception("获取PDF文件失败")
         return jsonify({"success": False, "error": str(e)}), 500
 
 

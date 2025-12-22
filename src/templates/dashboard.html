@@ -143,7 +143,8 @@
           <section class="card">
             <div class="tabs invoice-tabs">
               <button data-invoice-tab="upload" class="active">上传发票</button>
-              <button data-invoice-tab="list">已生成凭证</button>
+              <button data-invoice-tab="library">发票库</button>
+              <button data-invoice-tab="vouchers">凭证库</button>
             </div>
 
             <div data-invoice-pane="upload" class="invoice-pane active">
@@ -167,20 +168,24 @@
               </section>
             </div>
 
-            <div data-invoice-pane="list" class="invoice-pane">
-              <h3>已生成凭证</h3>
-              <p class="hint">上传后自动生成凭证 PDF，可在“凭证 PDF”列点击预览。</p>
+            <!-- 发票库 -->
+            <div data-invoice-pane="library" class="invoice-pane">
+              <h3>发票库</h3>
+              <p class="hint">管理所有上传的发票，支持批量选择生成凭证</p>
+              <div class="invoice-controls" style="margin-bottom:16px;">
+                <input id="library-search" placeholder="搜索文件名/供应商/分类" />
+                <input id="library-start" type="date" />
+                <input id="library-end" type="date" />
+                <button id="library-search-btn" type="button" class="ghost">筛选</button>
+                <button id="library-clear-btn" type="button" class="ghost">清除</button>
+                <button id="select-all-btn" type="button" class="ghost" style="margin-left:16px;">全选</button>
+                <button id="batch-generate-voucher-btn" type="button" class="primary" style="margin-left:8px;">批量生成凭证</button>
+              </div>
               <div class="table-wrap">
-                <div class="invoice-controls">
-                  <input id="invoice-search" placeholder="搜索文件名/供应商/分类" />
-                  <input id="invoice-start" type="date" />
-                  <input id="invoice-end" type="date" />
-                  <button id="invoice-search-btn" type="button" class="ghost">筛选</button>
-                  <button id="invoice-clear-btn" type="button" class="ghost">清除</button>
-                </div>
-                <table id="invoice-table">
+                <table id="library-table">
                   <thead>
                     <tr>
+                      <th><input type="checkbox" id="master-checkbox" /></th>
                       <th>ID</th>
                       <th>文件</th>
                       <th>供应商</th>
@@ -190,17 +195,48 @@
                       <th>创建时间</th>
                       <th>状态</th>
                       <th>预览</th>
-                      <th>发票</th>
-                      <th>凭证 PDF</th>
                       <th>操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colspan="12">加载中...</td></tr>
+                    <tr><td colspan="11">加载中...</td></tr>
                   </tbody>
                 </table>
               </div>
             </div>
+
+            <!-- 凭证库 -->
+            <div data-invoice-pane="vouchers" class="invoice-pane">
+              <h3>凭证库</h3>
+              <p class="hint">查看和管理已生成的会计凭证</p>
+              <div class="invoice-controls">
+                <input id="voucher-search" placeholder="搜索凭证ID/发票信息" />
+                <input id="voucher-start" type="date" />
+                <input id="voucher-end" type="date" />
+                <button id="voucher-search-btn" type="button" class="ghost">筛选</button>
+                <button id="voucher-clear-btn" type="button" class="ghost">清除</button>
+              </div>
+              <div class="table-wrap">
+                <table id="voucher-table">
+                  <thead>
+                    <tr>
+                      <th><input type="checkbox" id="voucher-master-checkbox" /></th>
+                      <th>凭证ID</th>
+                      <th>包含发票</th>
+                      <th>总金额</th>
+                      <th>生成时间</th>
+                      <th>凭证文件</th>
+                      <th>Excel文件</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td colspan="8">加载中...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </section>
         </div>
 
@@ -210,184 +246,241 @@
             <div>
               <p class="eyebrow">财务报表</p>
               <h2>智能报表生成</h2>
-              <p class="hint">生成三类报表：单张票据审核报告、周期汇总报表、审计追溯与整改清单</p>
+              <p class="hint">生成标准财务报表（资产负债表、利润表、现金流量表）以及其他审核报表</p>
             </div>
           </header>
 
           <!-- 报表类型选择 -->
           <section class="card">
-            <div class="tabs report-tabs">
-              <button data-report-tab="invoice-audit" class="active">单张票据审核报告</button>
-              <button data-report-tab="period-summary">周期汇总报表</button>
-              <button data-report-tab="audit-trail">审计追溯与整改清单</button>
-              <button data-report-tab="all-reports">生成所有报表</button>
+            <div class="tabs financial-report-tabs">
+              <button data-financial-tab="balance-sheet" class="active">资产负债表</button>
+              <button data-financial-tab="income-statement">利润表</button>
+              <button data-financial-tab="cash-flow">现金流量表</button>
+              <button data-financial-tab="all-financial">生成所有报表</button>
             </div>
           </section>
 
-          <!-- 单张票据审核报告 -->
-          <div data-report-pane="invoice-audit" class="report-pane active">
-            <section class="card two-col">
-              <div>
-                <h3>生成单张票据审核报告</h3>
-                <form id="invoice-audit-form" class="stacked">
-                  <label>票据ID
-                    <input type="text" id="invoice-audit-doc-id" placeholder="doc_xxx" required />
-                    <small class="hint">从发票管理页面获取票据ID</small>
-                  </label>
-                  <label>
-                    <input type="checkbox" id="invoice-audit-save" checked />
-                    保存为文件
-                  </label>
-                  <button type="submit">生成报告</button>
-                </form>
-              </div>
-              <div>
-                <h3>报告结果</h3>
-                <div id="invoice-audit-loading" class="hint" style="display:none;">生成中...</div>
-                <article id="invoice-audit-output" class="markdown-body surface" style="max-height:600px;overflow-y:auto;">等待生成...</article>
-              </div>
-            </section>
-          </div>
-
-          <!-- 周期汇总报表 -->
-          <div data-report-pane="period-summary" class="report-pane">
-            <section class="card two-col">
-              <div>
-                <h3>生成周期汇总报表</h3>
-                <form id="period-summary-form" class="stacked">
-                  <label>开始日期
-                    <input type="date" id="period-summary-start" />
-                  </label>
-                  <label>结束日期
-                    <input type="date" id="period-summary-end" />
-                  </label>
-                  <label>周期类型
-                    <select id="period-summary-type">
-                      <option value="月">月报</option>
-                      <option value="周">周报</option>
-                      <option value="项目">项目报</option>
-                    </select>
-                  </label>
-                  <label>周期标签
-                    <input type="text" id="period-summary-label" placeholder="如：2025年10期" />
-                  </label>
-                  <label>
-                    <input type="checkbox" id="period-summary-save" checked />
-                    保存为文件
-                  </label>
-                  <button type="submit">生成报表</button>
-                </form>
-              </div>
-              <div>
-                <h3>报表结果</h3>
-                <div id="period-summary-loading" class="hint" style="display:none;">生成中...</div>
-                <article id="period-summary-output" class="markdown-body surface" style="max-height:600px;overflow-y:auto;">等待生成...</article>
-              </div>
-            </section>
-          </div>
-
-          <!-- 审计追溯与整改清单 -->
-          <div data-report-pane="audit-trail" class="report-pane">
-            <section class="card two-col">
-              <div>
-                <h3>生成审计追溯与整改清单</h3>
-                <form id="audit-trail-form" class="stacked">
-                  <label>开始日期
-                    <input type="date" id="audit-trail-start" />
-                  </label>
-                  <label>结束日期
-                    <input type="date" id="audit-trail-end" />
-                  </label>
-                  <label>
-                    <input type="checkbox" id="audit-trail-save" checked />
-                    保存为文件
-                  </label>
-                  <button type="submit">生成清单</button>
-                </form>
-              </div>
-              <div>
-                <h3>清单结果</h3>
-                <div id="audit-trail-loading" class="hint" style="display:none;">生成中...</div>
-                <article id="audit-trail-output" class="markdown-body surface" style="max-height:600px;overflow-y:auto;">等待生成...</article>
-              </div>
-            </section>
-          </div>
-
-          <!-- 生成所有报表 -->
-          <div data-report-pane="all-reports" class="report-pane">
-            <section class="card">
-              <h3>生成所有报表</h3>
-              <form id="all-reports-form" class="stacked">
-                <label>开始日期
-                  <input type="date" id="all-reports-start" />
-                </label>
-                <label>结束日期
-                  <input type="date" id="all-reports-end" />
-                </label>
-                <label>周期类型
-                  <select id="all-reports-type">
-                    <option value="月">月报</option>
-                    <option value="周">周报</option>
-                    <option value="项目">项目报</option>
-                  </select>
-                </label>
-                <label>周期标签
-                  <input type="text" id="all-reports-label" placeholder="如：2025年10期" />
-                </label>
-                <label>
-                  <input type="checkbox" id="all-reports-save" checked />
-                  保存为文件
-                </label>
-                <button type="submit">生成所有报表</button>
-              </form>
-              <div id="all-reports-loading" class="hint" style="display:none;margin-top:16px;">生成中，请稍候...</div>
-              <div id="all-reports-output" style="margin-top:16px;">
-                <div class="tabs">
-                  <button data-all-report-tab="period" class="active">周期汇总报表</button>
-                  <button data-all-report-tab="trail">审计追溯清单</button>
-                  <button data-all-report-tab="invoices">单张票据报告</button>
-                </div>
-                <div data-all-report-content="period" class="report-content active">
-                  <article id="all-reports-period" class="markdown-body surface" style="max-height:600px;overflow-y:auto;margin-top:12px;">等待生成...</article>
-                </div>
-                <div data-all-report-content="trail" class="report-content">
-                  <article id="all-reports-trail" class="markdown-body surface" style="max-height:600px;overflow-y:auto;margin-top:12px;">等待生成...</article>
-                </div>
-                <div data-all-report-content="invoices" class="report-content">
-                  <div id="all-reports-invoices" style="margin-top:12px;">
-                    <p class="hint">单张票据报告将显示在这里（如果票据数量≤50）</p>
+          <!-- 标准财务报表 -->
+          <section class="card" style="margin-top:16px;">
+            <!-- 资产负债表 -->
+            <div data-financial-pane="balance-sheet" class="financial-pane active">
+                <section class="card two-col" style="margin-top:16px;">
+                  <div>
+                    <h4>生成资产负债表</h4>
+                    <form id="balance-sheet-form" class="stacked">
+                      <label>开始日期
+                        <input type="date" id="balance-sheet-start" />
+                      </label>
+                      <label>结束日期
+                        <input type="date" id="balance-sheet-end" />
+                      </label>
+                      <label>期间类型
+                        <select id="balance-sheet-period">
+                          <option value="month">月度</option>
+                          <option value="quarter">季度</option>
+                          <option value="year">年度</option>
+                        </select>
+                      </label>
+                      <label>公司名称
+                        <input type="text" id="balance-sheet-company" placeholder="可选" />
+                      </label>
+                      <label>币种
+                        <select id="balance-sheet-currency">
+                          <option value="CNY">人民币 (CNY)</option>
+                          <option value="USD">美元 (USD)</option>
+                          <option value="EUR">欧元 (EUR)</option>
+                        </select>
+                      </label>
+                      <button type="submit">生成资产负债表</button>
+                    </form>
                   </div>
-                </div>
+                  <div>
+                    <h4>报表结果</h4>
+                    <div id="balance-sheet-loading" class="hint" style="display:none;">生成中...</div>
+                    <div style="margin-bottom:12px;">
+                      <button id="balance-sheet-pdf-preview" class="ghost" style="display:none;margin-right:8px;">预览PDF</button>
+                      <button id="balance-sheet-pdf-download" class="ghost" style="display:none;margin-right:8px;">下载PDF</button>
+                      <button id="balance-sheet-ai-btn" class="ghost" style="display:none;">生成AI分析</button>
+                    </div>
+                    <article id="balance-sheet-output" class="markdown-body surface" style="max-height:600px;overflow-y:auto;">等待生成...</article>
+                    <div id="balance-sheet-ai" style="margin-top:16px;display:none;">
+                      <h5>AI分析</h5>
+                      <article id="balance-sheet-ai-content" class="markdown-body surface" style="max-height:300px;overflow-y:auto;"></article>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <!-- 利润表 -->
+              <div data-financial-pane="income-statement" class="financial-pane">
+                <section class="card two-col" style="margin-top:16px;">
+                  <div>
+                    <h4>生成利润表</h4>
+                    <form id="income-statement-form" class="stacked">
+                      <label>开始日期
+                        <input type="date" id="income-statement-start" />
+                      </label>
+                      <label>结束日期
+                        <input type="date" id="income-statement-end" />
+                      </label>
+                      <label>期间类型
+                        <select id="income-statement-period">
+                          <option value="month">月度</option>
+                          <option value="quarter">季度</option>
+                          <option value="year">年度</option>
+                        </select>
+                      </label>
+                      <label>公司名称
+                        <input type="text" id="income-statement-company" placeholder="可选" />
+                      </label>
+                      <label>币种
+                        <select id="income-statement-currency">
+                          <option value="CNY">人民币 (CNY)</option>
+                          <option value="USD">美元 (USD)</option>
+                          <option value="EUR">欧元 (EUR)</option>
+                        </select>
+                      </label>
+                      <button type="submit">生成利润表</button>
+                    </form>
+                  </div>
+                  <div>
+                    <h4>报表结果</h4>
+                    <div id="income-statement-loading" class="hint" style="display:none;">生成中...</div>
+                    <div style="margin-bottom:12px;">
+                      <button id="income-statement-pdf-preview" class="ghost" style="display:none;margin-right:8px;">预览PDF</button>
+                      <button id="income-statement-pdf-download" class="ghost" style="display:none;margin-right:8px;">下载PDF</button>
+                      <button id="income-statement-ai-btn" class="ghost" style="display:none;">生成AI分析</button>
+                    </div>
+                    <article id="income-statement-output" class="markdown-body surface" style="max-height:600px;overflow-y:auto;">等待生成...</article>
+                    <div id="income-statement-ai" style="margin-top:16px;display:none;">
+                      <h5>AI分析</h5>
+                      <article id="income-statement-ai-content" class="markdown-body surface" style="max-height:300px;overflow-y:auto;"></article>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <!-- 现金流量表 -->
+              <div data-financial-pane="cash-flow" class="financial-pane">
+                <section class="card two-col" style="margin-top:16px;">
+                  <div>
+                    <h4>生成现金流量表</h4>
+                    <form id="cash-flow-form" class="stacked">
+                      <label>开始日期
+                        <input type="date" id="cash-flow-start" />
+                      </label>
+                      <label>结束日期
+                        <input type="date" id="cash-flow-end" />
+                      </label>
+                      <label>期间类型
+                        <select id="cash-flow-period">
+                          <option value="month">月度</option>
+                          <option value="quarter">季度</option>
+                          <option value="year">年度</option>
+                        </select>
+                      </label>
+                      <label>公司名称
+                        <input type="text" id="cash-flow-company" placeholder="可选" />
+                      </label>
+                      <label>币种
+                        <select id="cash-flow-currency">
+                          <option value="CNY">人民币 (CNY)</option>
+                          <option value="USD">美元 (USD)</option>
+                          <option value="EUR">欧元 (EUR)</option>
+                        </select>
+                      </label>
+                      <button type="submit">生成现金流量表</button>
+                    </form>
+                  </div>
+                  <div>
+                    <h4>报表结果</h4>
+                    <div id="cash-flow-loading" class="hint" style="display:none;">生成中...</div>
+                    <div style="margin-bottom:12px;">
+                      <button id="cash-flow-pdf-preview" class="ghost" style="display:none;margin-right:8px;">预览PDF</button>
+                      <button id="cash-flow-pdf-download" class="ghost" style="display:none;margin-right:8px;">下载PDF</button>
+                      <button id="cash-flow-ai-btn" class="ghost" style="display:none;">生成AI分析</button>
+                    </div>
+                    <article id="cash-flow-output" class="markdown-body surface" style="max-height:600px;overflow-y:auto;">等待生成...</article>
+                    <div id="cash-flow-ai" style="margin-top:16px;display:none;">
+                      <h5>AI分析</h5>
+                      <article id="cash-flow-ai-content" class="markdown-body surface" style="max-height:300px;overflow-y:auto;"></article>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <!-- 生成所有财务报表 -->
+              <div data-financial-pane="all-financial" class="financial-pane">
+                <section class="card" style="margin-top:16px;">
+                  <h4>生成所有财务报表</h4>
+                  <form id="all-financial-reports-form" class="stacked">
+                    <div class="two-col">
+                      <div>
+                        <label>开始日期
+                          <input type="date" id="all-financial-start" />
+                        </label>
+                        <label>结束日期
+                          <input type="date" id="all-financial-end" />
+                        </label>
+                        <label>期间类型
+                          <select id="all-financial-period">
+                            <option value="month">月度</option>
+                            <option value="quarter">季度</option>
+                            <option value="year">年度</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div>
+                        <label>公司名称
+                          <input type="text" id="all-financial-company" placeholder="可选" />
+                        </label>
+                        <label>币种
+                          <select id="all-financial-currency">
+                            <option value="CNY">人民币 (CNY)</option>
+                            <option value="USD">美元 (USD)</option>
+                            <option value="EUR">欧元 (EUR)</option>
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                    <button type="submit">生成所有财务报表</button>
+                  </form>
+                  <div id="all-financial-loading" class="hint" style="display:none;margin-top:16px;">生成中，请稍候...</div>
+                  <div id="all-financial-output" style="margin-top:16px;">
+                    <div class="tabs">
+                      <button data-all-financial-tab="balance-sheet" class="active">资产负债表</button>
+                      <button data-all-financial-tab="income-statement">利润表</button>
+                      <button data-all-financial-tab="cash-flow">现金流量表</button>
+                    </div>
+                    <div data-all-financial-content="balance-sheet" class="financial-content active">
+                      <div style="margin-bottom:12px;">
+                        <button id="all-financial-balance-sheet-pdf-preview" class="ghost" style="display:none;margin-right:8px;">预览PDF</button>
+                        <button id="all-financial-balance-sheet-pdf-download" class="ghost" style="display:none;margin-right:8px;">下载PDF</button>
+                        <button id="all-financial-balance-sheet-ai-btn" class="ghost" style="display:none;">生成AI分析</button>
+                      </div>
+                      <article id="all-financial-balance-sheet" class="markdown-body surface" style="max-height:600px;overflow-y:auto;margin-top:12px;">等待生成...</article>
+                    </div>
+                    <div data-all-financial-content="income-statement" class="financial-content">
+                      <div style="margin-bottom:12px;">
+                        <button id="all-financial-income-statement-pdf-preview" class="ghost" style="display:none;margin-right:8px;">预览PDF</button>
+                        <button id="all-financial-income-statement-pdf-download" class="ghost" style="display:none;margin-right:8px;">下载PDF</button>
+                        <button id="all-financial-income-statement-ai-btn" class="ghost" style="display:none;">生成AI分析</button>
+                      </div>
+                      <article id="all-financial-income-statement" class="markdown-body surface" style="max-height:600px;overflow-y:auto;margin-top:12px;">等待生成...</article>
+                    </div>
+                    <div data-all-financial-content="cash-flow" class="financial-content">
+                      <div style="margin-bottom:12px;">
+                        <button id="all-financial-cash-flow-pdf-preview" class="ghost" style="display:none;margin-right:8px;">预览PDF</button>
+                        <button id="all-financial-cash-flow-pdf-download" class="ghost" style="display:none;margin-right:8px;">下载PDF</button>
+                        <button id="all-financial-cash-flow-ai-btn" class="ghost" style="display:none;">生成AI分析</button>
+                      </div>
+                      <article id="all-financial-cash-flow" class="markdown-body surface" style="max-height:600px;overflow-y:auto;margin-top:12px;">等待生成...</article>
+                    </div>
+                  </div>
+                </section>
               </div>
             </section>
           </div>
-
-          <!-- 传统财务报表（保留） -->
-          <section class="card" style="margin-top:24px;">
-            <h3>传统财务报表（按月/季/年编制）</h3>
-            <div class="card two-col">
-              <div>
-                <form id="report-form" class="stacked">
-                  <label>期间类型
-                    <select id="report-period">
-                      <option value="month">月度</option>
-                      <option value="quarter">季度</option>
-                      <option value="year">年度</option>
-                    </select>
-                  </label>
-                  <label>参考日期
-                    <input type="date" id="report-date" />
-                  </label>
-                  <button type="submit">生成报表</button>
-                </form>
-              </div>
-              <div>
-                <h3>报表结果</h3>
-                <article id="report-output" class="markdown-body surface">等待生成...</article>
-                <pre id="report-summary" class="surface small">--</pre>
-              </div>
-            </div>
-          </section>
         </div>
 
         <!-- AI 审核/知识库 占位 -->

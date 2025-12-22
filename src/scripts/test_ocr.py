@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--image",
         type=Path,
-        default=Path("/Users/muxin/Desktop/对账系统/InvoiceDatasets-master/dataset/images/taxi_test/taxi_0122.jpg"),
+        default=Path("/Users/muxin/Desktop/对账系统/InvoiceDatasets-master/dataset/images/taxi_test/taxi_0127.jpg"),
         help="要测试的图片路径",
     )
     args = parser.parse_args()
