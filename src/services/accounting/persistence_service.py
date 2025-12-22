@@ -5,13 +5,14 @@ from pathlib import Path
 from typing import List
 from datetime import datetime
 import logging
+import re
 
 from PIL import Image, ImageDraw, ImageFont
 
 from werkzeug.security import generate_password_hash
 
 from database import db_session
-from models.db_models import Document, LedgerEntry, User
+from models.db_models import Document, User
 from models.schemas import DocumentPayload, DocumentResult, generate_id
 from config import DATA_DIR
 
@@ -43,32 +44,10 @@ def persist_results(documents: List[DocumentResult], payloads: List[DocumentPayl
                 tax_amount=doc_result.tax_amount,
                 currency=doc_result.currency,
                 category=doc_result.category,
-                status="auto_recorded",
+                status="uploaded",
                 raw_result=raw,
             )
-
-            entries = doc_result.journal_entries or [
-                {
-                    "debit_account": _map_debit_account(doc_result.category),
-                    "credit_account": "现金",
-                    "amount": float(doc_result.total_amount or 0.0),
-                    "memo": f"AI自动记账：{doc_result.vendor or doc_result.file_name}",
-                }
-            ]
-            voucher_path = _generate_voucher_pdf(doc_result, entries)
-            raw["voucher_pdf_path"] = str(voucher_path) if voucher_path else None
-            doc_record.raw_result = raw
             session.merge(doc_record)
-            for entry_payload in entries:
-                entry = LedgerEntry(
-                    document_id=doc_result.document_id,
-                    user_id=user.id,
-                    debit_account=entry_payload.get("debit_account", _map_debit_account(doc_result.category)),
-                    credit_account=entry_payload.get("credit_account", "现金"),
-                    amount=float(entry_payload.get("amount", doc_result.total_amount or 0.0)),
-                    memo=entry_payload.get("memo", doc_result.file_name),
-                )
-                session.add(entry)
 
 
 def _resolve_user(session, payload: DocumentPayload) -> User:
@@ -264,4 +243,165 @@ def _generate_voucher_pdf(doc: DocumentResult, entries: List[dict]) -> Path | No
         return None
 
 
-__all__ = ["persist_results"]
+def next_voucher_no() -> int:
+    """根据输出目录现有凭证文件，生成下一个流水号（从1开始）。"""
+    out_dir = DATA_DIR / "output" / "vouchers"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    max_no = 0
+    pattern = re.compile(r"voucher_(\d+)\.pdf$")
+    for p in out_dir.glob("voucher_*.pdf"):
+        m = pattern.search(p.name)
+        if m:
+            try:
+                max_no = max(max_no, int(m.group(1)))
+            except Exception:
+                continue
+    return max_no + 1
+
+
+def generate_combined_voucher(documents: List[DocumentResult], entries: List[dict]) -> tuple[Path | None, int, str]:
+    """
+    根据多张发票合成一个凭证 PDF。
+    返回 (path, voucher_no, voucher_date)
+    """
+    if not documents:
+        return None, 0, ""
+    voucher_no = next_voucher_no()
+    voucher_date = datetime.utcnow().strftime("%Y-%m-%d")
+
+    try:
+        out_dir = DATA_DIR / "output" / "vouchers"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        page_width, page_height = 1240, 1754  # A4
+        page = Image.new("RGB", (page_width, page_height), "white")
+        draw = ImageDraw.Draw(page)
+
+        def _try_font(size: int):
+            candidates = [
+                "/System/Library/Fonts/PingFang.ttc",
+                "/System/Library/Fonts/STHeiti Light.ttc",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            ]
+            for p in candidates:
+                try:
+                    return ImageFont.truetype(p, size)
+                except Exception:
+                    continue
+            return ImageFont.load_default()
+
+        font = _try_font(20)
+        font_small = _try_font(16)
+        font_title = _try_font(30)
+
+        def _text_size(text: str, f):
+            try:
+                bbox = draw.textbbox((0, 0), text, font=f)
+                return bbox[2] - bbox[0], bbox[3] - bbox[1]
+            except Exception:
+                try:
+                    return draw.textsize(text, font=f)
+                except Exception:
+                    return len(text) * 10, 16
+
+        margin = 80
+        line_h = 34
+        text_color = (34, 45, 60)
+        grid_color = (180, 180, 180)
+
+        def text_line(x: int, y: int, text: str, f=font) -> int:
+            draw.text((x, y), text, fill=text_color, font=f)
+            return y + line_h
+
+        title = "记账凭证（合并）"
+        tw, th = _text_size(title, font_title)
+        draw.text(((page_width - tw) / 2, margin), title, fill=text_color, font=font_title)
+        y = margin + th + 10
+
+        y = text_line(margin, y, f"凭证日期：{voucher_date}")
+        y = text_line(margin, y, f"凭证字号：记字第 {voucher_no} 号")
+        y = text_line(margin, y, f"包含发票：{len(documents)} 张")
+
+        y += line_h // 2
+        draw.line((margin, y, page_width - margin, y), fill=grid_color, width=2)
+        y += line_h // 2
+
+        col_summary_w = 360
+        col_account_w = 340
+        col_amount_w = 180
+        x_summary = margin
+        x_account = x_summary + col_summary_w
+        x_debit = x_account + col_account_w
+        x_credit = x_debit + col_amount_w
+        header_y = y
+
+        def draw_header_cell(x0: int, x1: int, text: str) -> None:
+            draw.text((x0 + 8, header_y), text, fill=text_color, font=font)
+            draw.line((x0, header_y + line_h, x1, header_y + line_h), fill=grid_color, width=2)
+
+        draw_header_cell(x_summary, x_account, "摘要")
+        draw_header_cell(x_account, x_debit, "会计科目")
+        draw_header_cell(x_debit, x_credit, "借方金额(元)")
+        draw_header_cell(x_credit, x_credit + col_amount_w, "贷方金额(元)")
+        y = header_y + line_h + 4
+
+        rows: list[dict] = []
+        for entry in entries:
+            memo = entry.get("memo") or ""
+            amt = float(entry.get("amount", 0) or 0)
+            debit_acc = entry.get("debit_account") or ""
+            credit_acc = entry.get("credit_account") or ""
+            rows.append({"summary": memo, "account": debit_acc, "debit": amt, "credit": 0.0})
+            rows.append({"summary": memo, "account": credit_acc, "debit": 0.0, "credit": amt})
+
+        if not rows:
+            rows.append({"summary": "无分录", "account": "", "debit": 0.0, "credit": 0.0})
+
+        total_debit = 0.0
+        total_credit = 0.0
+
+        def fmt_amt(v: float | None) -> str:
+            if v is None:
+                return ""
+            return f"{v:,.2f}"
+
+        for row in rows:
+            y = text_line(x_summary, y, str(row.get("summary", "")), f=font_small)
+            text_line(x_account, y - line_h, str(row.get("account", "")), f=font_small)
+            debit = row.get("debit")
+            credit = row.get("credit")
+            if debit:
+                total_debit += float(debit)
+            if credit:
+                total_credit += float(credit)
+            text_line(x_debit, y - line_h, fmt_amt(debit), f=font_small)
+            text_line(x_credit, y - line_h, fmt_amt(credit), f=font_small)
+            draw.line((margin, y, page_width - margin, y), fill=grid_color, width=1)
+            y += 6
+
+        y += 4
+        draw.line((margin, y, page_width - margin, y), fill=grid_color, width=2)
+        y = text_line(x_summary, y + 6, "合计", f=font)
+        text_line(x_debit, y - line_h, fmt_amt(total_debit), f=font)
+        text_line(x_credit, y - line_h, fmt_amt(total_credit), f=font)
+        y += 6
+        draw.line((margin, y, page_width - margin, y), fill=grid_color, width=2)
+        y += line_h
+
+        note = "提示：本凭证由多张发票合并生成，可按需调整科目与金额。"
+        y = text_line(margin, y, note, f=font_small)
+        y += line_h
+        sign_y = y
+        sign_labels = ["制单", "审核", "出纳", "记账"]
+        for idx, label in enumerate(sign_labels):
+            x = margin + idx * 220
+            draw.text((x, sign_y), f"{label}：__________", fill=text_color, font=font)
+
+        file_path = out_dir / f"voucher_{voucher_no}.pdf"
+        page.save(file_path, "PDF", resolution=150.0)
+        return file_path, voucher_no, voucher_date
+    except Exception:
+        logging.exception("generate combined voucher failed")
+        return None, voucher_no, voucher_date
+
+
+__all__ = ["persist_results", "generate_combined_voucher", "next_voucher_no"]

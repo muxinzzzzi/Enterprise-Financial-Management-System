@@ -37,7 +37,11 @@ from services.ingestion.ingestion_service import DocumentIngestionService
 from services.ingestion.ocr_service import MultiEngineOCRService
 from services.accounting.journal_service import JournalEntryService
 from services.policy_rag.policy_service import PolicyValidationService
-from services.accounting.persistence_service import persist_results, _generate_voucher_pdf
+from services.accounting.persistence_service import (
+    persist_results,
+    _generate_voucher_pdf,
+    generate_combined_voucher,
+)
 from services.analytics.report_service import ReportService
 from services.analytics.advanced_report_service import AdvancedReportService
 from services.accounting.ai_accountant import FinancialReportService
@@ -396,6 +400,233 @@ def generate_voucher(doc_id: str) -> Any:
     except Exception as exc:
         logging.exception("generate voucher api failed: %s", doc_id)
         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.post("/api/v1/invoices/batch_voucher/generate")
+def batch_generate_vouchers() -> Any:
+    """批量生成“合并凭证”：勾选多张发票 -> 生成一张凭证 PDF。"""
+    data = request.get_json(force=True)
+    invoice_ids = data.get("invoice_ids", [])
+    if not invoice_ids or not isinstance(invoice_ids, list):
+        return jsonify({"success": False, "error": "invoice_ids required"}), 400
+
+    try:
+        doc_results = []
+        all_entries = []
+        with db_session() as session:
+            docs = session.query(Document).filter(Document.id.in_(invoice_ids)).all()
+            if not docs:
+                return jsonify({"success": False, "error": "未找到发票"}), 404
+
+            for doc in docs:
+                raw = doc.raw_result or {}
+                issue_date = (
+                    raw.get("issue_date")
+                    or raw.get("normalized_fields", {}).get("issue_date")
+                    or raw.get("structured_fields", {}).get("issue_date")
+                    or (doc.created_at.date().isoformat() if doc.created_at else None)
+                )
+                doc_result = DocumentResult(
+                    document_id=doc.id,
+                    file_name=doc.file_name,
+                    vendor=doc.vendor,
+                    currency=doc.currency or "CNY",
+                    total_amount=doc.amount,
+                    tax_amount=doc.tax_amount,
+                    issue_date=issue_date,
+                    category=doc.category,
+                    structured_fields=raw.get("structured_fields") or {},
+                    normalized_fields=raw.get("normalized_fields") or {},
+                    ocr_confidence=raw.get("ocr_confidence") or 0.0,
+                    ocr_spans=raw.get("ocr_spans") or [],
+                    policy_flags=[],
+                    anomalies=[],
+                    duplicate_candidates=[],
+                    reasoning_trace=[],
+                    journal_entries=[],
+                )
+                entries = journal_service.generate(doc_result)
+                # 标记 memo，方便在 PDF 中区分来源
+                for e in entries:
+                    e["memo"] = e.get("memo") or doc.vendor or doc.file_name
+                doc_results.append(doc_result)
+                all_entries.extend(entries)
+
+            voucher_path, voucher_no, voucher_date = generate_combined_voucher(doc_results, all_entries)
+            if not voucher_path:
+                return jsonify({"success": False, "error": "生成凭证失败"}), 500
+
+            for doc in docs:
+                raw = doc.raw_result or {}
+                raw["voucher_pdf_path"] = str(voucher_path)
+                raw["voucher_no"] = voucher_no
+                raw["voucher_date"] = voucher_date
+                session.query(Document).filter_by(id=doc.id).update(
+                    {
+                        Document.raw_result: raw,
+                        Document.status: "voucher_generated",
+                    }
+                )
+
+        return jsonify(
+            {
+                "success": True,
+                "voucher_pdf_path": str(voucher_path),
+                "voucher_no": voucher_no,
+                "voucher_date": voucher_date,
+                "invoice_count": len(invoice_ids),
+            }
+        )
+    except Exception as exc:
+        logging.exception("batch generate vouchers api failed")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.get("/api/v1/vouchers")
+def list_vouchers() -> Any:
+    """获取凭证列表（合并凭证，按 voucher_pdf_path 聚合）。"""
+    user_id = request.args.get("user_id")
+    q = request.args.get("q", "")
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+
+    with db_session() as session:
+        query = session.query(Document).filter(Document.raw_result.isnot(None))
+
+        # 时间区间过滤
+        if start_date:
+            try:
+                from datetime import datetime
+                sd = datetime.fromisoformat(start_date)
+                query = query.filter(Document.created_at >= sd)
+            except Exception:
+                pass
+        if end_date:
+            try:
+                from datetime import datetime
+                ed = datetime.fromisoformat(end_date)
+                query = query.filter(Document.created_at <= ed)
+            except Exception:
+                pass
+        if user_id:
+            query = query.filter(Document.user_id == user_id)
+
+        # 关键字搜索
+        if q:
+            like_q = f"%{q}%"
+            query = query.filter(
+                (Document.file_name.ilike(like_q))
+                | (Document.vendor.ilike(like_q))
+                | (Document.category.ilike(like_q))
+            )
+
+        query = query.order_by(Document.created_at.desc())
+        docs = query.all()
+        grouped: dict[str, dict] = {}
+
+        for doc in docs:
+            raw = doc.raw_result or {}
+            voucher_path = raw.get("voucher_pdf_path")
+            if not voucher_path:
+                continue  # 只显示有凭证的
+
+            key = voucher_path
+            if key not in grouped:
+                grouped[key] = {
+                    "id": raw.get("voucher_no") or key,
+                    "invoice_ids": [],
+                    "total_amount": 0.0,
+                    "created_at": raw.get("voucher_date") or (doc.created_at.isoformat() if doc.created_at else None),
+                    "voucher_pdf_url": url_for("get_voucher_pdf", doc_id=doc.id),
+                    "voucher_excel_url": None,
+                    "invoices": [],
+                    "voucher_no": raw.get("voucher_no"),
+                    "voucher_date": raw.get("voucher_date"),
+                }
+            grouped[key]["invoice_ids"].append(doc.id)
+            grouped[key]["total_amount"] += float(doc.amount or 0.0)
+            grouped[key]["invoices"].append(
+                {
+                    "id": doc.id,
+                    "file_name": doc.file_name,
+                    "vendor": doc.vendor,
+                    "amount": doc.amount,
+                }
+            )
+
+        result = list(grouped.values())
+        # 按凭证号排序
+        result.sort(key=lambda x: (x.get("voucher_no") or 0))
+
+    return jsonify({"success": True, "data": result})
+
+
+@app.delete("/api/v1/vouchers")
+def delete_vouchers() -> Any:
+    """根据凭证号或包含的发票，删除已生成的凭证文件并解绑文档记录。"""
+    payload = request.get_json(silent=True) or {}
+    voucher_ids = payload.get("voucher_ids") or []
+    invoice_ids = payload.get("invoice_ids") or []
+
+    voucher_ids = [str(v).strip() for v in voucher_ids if str(v).strip()]
+    invoice_ids = [str(i).strip() for i in invoice_ids if str(i).strip()]
+
+    if not voucher_ids and not invoice_ids:
+        return jsonify({"success": False, "error": "voucher_ids or invoice_ids required"}), 400
+
+    removed_docs = 0
+    removed_files: set[str] = set()
+
+    with db_session() as session:
+        docs = session.query(Document).filter(Document.raw_result.isnot(None)).all()
+        for doc in docs:
+            raw = doc.raw_result or {}
+            voucher_path = raw.get("voucher_pdf_path")
+            voucher_no = raw.get("voucher_no")
+            voucher_excel_path = raw.get("voucher_excel_path")
+
+            has_voucher = bool(voucher_path or voucher_no)
+            if not has_voucher:
+                continue
+
+            path_stem = Path(voucher_path).stem if voucher_path else ""
+            matched = False
+            if voucher_ids:
+                if voucher_no and str(voucher_no) in voucher_ids:
+                    matched = True
+                if path_stem and path_stem in voucher_ids:
+                    matched = True
+            if not matched and invoice_ids and doc.id in invoice_ids:
+                matched = True
+
+            if not matched:
+                continue
+
+            if voucher_excel_path:
+                removed_files.add(str(voucher_excel_path))
+            if voucher_path:
+                removed_files.add(str(voucher_path))
+
+            raw.pop("voucher_pdf_path", None)
+            raw.pop("voucher_no", None)
+            raw.pop("voucher_date", None)
+            raw.pop("voucher_excel_path", None)
+            session.query(Document).filter_by(id=doc.id).update(
+                {
+                    Document.raw_result: raw,
+                    Document.status: "auto_recorded",
+                }
+            )
+            removed_docs += 1
+
+    for fp in removed_files:
+        try:
+            if fp and os.path.exists(fp):
+                os.remove(fp)
+        except Exception:
+            pass
+
+    return jsonify({"success": True, "removed": removed_docs, "files_removed": len(removed_files)})
 
 
 @app.post("/api/v1/reports/financial")

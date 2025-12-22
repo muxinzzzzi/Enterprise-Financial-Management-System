@@ -143,7 +143,8 @@
           <section class="card">
             <div class="tabs invoice-tabs">
               <button data-invoice-tab="upload" class="active">上传发票</button>
-              <button data-invoice-tab="list">已生成凭证</button>
+              <button data-invoice-tab="library">发票库</button>
+              <button data-invoice-tab="vouchers">凭证库</button>
             </div>
 
             <div data-invoice-pane="upload" class="invoice-pane active">
@@ -167,20 +168,24 @@
               </section>
             </div>
 
-            <div data-invoice-pane="list" class="invoice-pane">
-              <h3>已生成凭证</h3>
-              <p class="hint">上传后自动生成凭证 PDF，可在“凭证 PDF”列点击预览。</p>
+            <!-- 发票库 -->
+            <div data-invoice-pane="library" class="invoice-pane">
+              <h3>发票库</h3>
+              <p class="hint">管理所有上传的发票，支持批量选择生成凭证</p>
+              <div class="invoice-controls" style="margin-bottom:16px;">
+                <input id="library-search" placeholder="搜索文件名/供应商/分类" />
+                <input id="library-start" type="date" />
+                <input id="library-end" type="date" />
+                <button id="library-search-btn" type="button" class="ghost">筛选</button>
+                <button id="library-clear-btn" type="button" class="ghost">清除</button>
+                <button id="select-all-btn" type="button" class="ghost" style="margin-left:16px;">全选</button>
+                <button id="batch-generate-voucher-btn" type="button" class="primary" style="margin-left:8px;">批量生成凭证</button>
+              </div>
               <div class="table-wrap">
-                <div class="invoice-controls">
-                  <input id="invoice-search" placeholder="搜索文件名/供应商/分类" />
-                  <input id="invoice-start" type="date" />
-                  <input id="invoice-end" type="date" />
-                  <button id="invoice-search-btn" type="button" class="ghost">筛选</button>
-                  <button id="invoice-clear-btn" type="button" class="ghost">清除</button>
-                </div>
-                <table id="invoice-table">
+                <table id="library-table">
                   <thead>
                     <tr>
+                      <th><input type="checkbox" id="master-checkbox" /></th>
                       <th>ID</th>
                       <th>文件</th>
                       <th>供应商</th>
@@ -190,17 +195,48 @@
                       <th>创建时间</th>
                       <th>状态</th>
                       <th>预览</th>
-                      <th>发票</th>
-                      <th>凭证 PDF</th>
                       <th>操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colspan="12">加载中...</td></tr>
+                    <tr><td colspan="11">加载中...</td></tr>
                   </tbody>
                 </table>
               </div>
             </div>
+
+            <!-- 凭证库 -->
+            <div data-invoice-pane="vouchers" class="invoice-pane">
+              <h3>凭证库</h3>
+              <p class="hint">查看和管理已生成的会计凭证</p>
+              <div class="invoice-controls">
+                <input id="voucher-search" placeholder="搜索凭证ID/发票信息" />
+                <input id="voucher-start" type="date" />
+                <input id="voucher-end" type="date" />
+                <button id="voucher-search-btn" type="button" class="ghost">筛选</button>
+                <button id="voucher-clear-btn" type="button" class="ghost">清除</button>
+              </div>
+              <div class="table-wrap">
+                <table id="voucher-table">
+                  <thead>
+                    <tr>
+                      <th><input type="checkbox" id="voucher-master-checkbox" /></th>
+                      <th>凭证ID</th>
+                      <th>包含发票</th>
+                      <th>总金额</th>
+                      <th>生成时间</th>
+                      <th>凭证文件</th>
+                      <th>Excel文件</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td colspan="8">加载中...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </section>
         </div>
 
