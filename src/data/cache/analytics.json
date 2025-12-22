@@ -548,5 +548,65 @@
     "tax_amount": null,
     "issue_date": "2017-10-24T00:00:00",
     "created_at": "2025-12-17T12:58:02.951616"
+  },
+  {
+    "document_id": "doc_245579b2bcfd",
+    "vendor": null,
+    "category": "差旅",
+    "currency": "CNY",
+    "amount": 19.0,
+    "tax_amount": null,
+    "issue_date": "2017-10-24T00:00:00",
+    "created_at": "2025-12-18T15:35:42.003226"
+  },
+  {
+    "document_id": "doc_236f98eb7148",
+    "vendor": "佳作天成(北京)科技有限公司",
+    "category": "设备",
+    "currency": "CNY",
+    "amount": 17985.47,
+    "tax_amount": 3057.53,
+    "issue_date": "2017-04-18T00:00:00",
+    "created_at": "2025-12-18T15:38:15.719024"
+  },
+  {
+    "document_id": "doc_9c1d03c99c0a",
+    "vendor": "上海易果电子商务有限公司北京分公司",
+    "category": "其他",
+    "currency": "CNY",
+    "amount": 95.5,
+    "tax_amount": null,
+    "issue_date": "2017-04-30T00:00:00",
+    "created_at": "2025-12-18T15:58:27.337799"
+  },
+  {
+    "document_id": "doc_b199d4f83775",
+    "vendor": null,
+    "category": "其他",
+    "currency": "CNY",
+    "amount": null,
+    "tax_amount": null,
+    "issue_date": null,
+    "created_at": "2025-12-22T10:07:55.047846"
+  },
+  {
+    "document_id": "doc_a0f2fc0ded3f",
+    "vendor": "北京中自百佳技术服务有限公司",
+    "category": "其他",
+    "currency": "CNY",
+    "amount": 300.0,
+    "tax_amount": 29.73,
+    "issue_date": "2017-04-18T00:00:00",
+    "created_at": "2025-12-22T10:28:00.967348"
+  },
+  {
+    "document_id": "doc_1fb6588195bd",
+    "vendor": "佳作天成(北京)科技有限公司",
+    "category": "设备",
+    "currency": "CNY",
+    "amount": 17985.47,
+    "tax_amount": 3057.53,
+    "issue_date": "2017-04-18T00:00:00",
+    "created_at": "2025-12-22T11:15:36.887908"
   }
 ]
