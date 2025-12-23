@@ -34,6 +34,7 @@ def persist_results(documents: List[DocumentResult], payloads: List[DocumentPayl
         for doc_result, payload in zip(documents, payloads):
             user = _resolve_user(session, payload)
             raw = doc_result.model_dump()
+            raw["policy_checked"] = True  # 生成时即标记已检查，避免后续重复 LLM
             doc_record = Document(
                 id=doc_result.document_id,
                 user_id=user.id,

@@ -68,13 +68,17 @@ class PolicyValidationService:
         return texts, metas
 
     def ingest_policies(self, policies: List[PolicyDocument]) -> None:
-        if not policies:
-            return
-        summaries, metas = self.summarizer.summarize_batch(policies)
+        summaries: List[str] = []
+        metas: List[dict] = []
+        if policies:
+            summaries, metas = self.summarizer.summarize_batch(policies)
         shadow_texts, shadow_metas = self._load_shadow_rules()
 
         all_texts = summaries + shadow_texts
         all_metas = metas + shadow_metas
+
+        if not all_texts:
+            return
 
         self.store.clear()
         self.store.add_texts(all_texts, all_metas)

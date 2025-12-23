@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict
 
-from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -69,3 +69,66 @@ class AssistantLog(Base):
     answer: Mapped[str] = mapped_column(Text)
     context: Mapped[Dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PolicyRule(Base):
+    """知识库规则主表。"""
+
+    __tablename__ = "policy_rules"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: generate_id("rule"))
+    title: Mapped[str] = mapped_column(String(255))
+    content: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    tags: Mapped[Dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    risk_tags: Mapped[Dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    scope: Mapped[Dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    versions = relationship("PolicyRuleVersion", back_populates="rule", cascade="all, delete-orphan")
+
+
+class PolicyRuleVersion(Base):
+    """规则版本历史记录。"""
+
+    __tablename__ = "policy_rule_versions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: generate_id("rver"))
+    rule_id: Mapped[str] = mapped_column(String, ForeignKey("policy_rules.id"))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    title: Mapped[str] = mapped_column(String(255))
+    content: Mapped[str] = mapped_column(Text)
+    summary: Mapped[str] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    risk_tags: Mapped[Dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    scope: Mapped[Dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    change_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    rule = relationship("PolicyRule", back_populates="versions")
+
+
+class ReviewLog(Base):
+    """AI 审核修订日志，支持审计追溯。"""
+
+    __tablename__ = "review_logs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: generate_id("rev"))
+    document_id: Mapped[str] = mapped_column(String, ForeignKey("documents.id"))
+    field_name: Mapped[str] = mapped_column(String(120))
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    meta: Mapped[Dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    document = relationship("Document")
+

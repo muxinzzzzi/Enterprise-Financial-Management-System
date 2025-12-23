@@ -18,9 +18,11 @@ from models.schemas import (
     AnalyticsQueryRequest,
     DocumentPayload,
     FeedbackRequest,
+    KnowledgeRulePayload,
     PipelineOptions,
     PolicyDocument,
     ReconciliationRequest,
+    ReviewUpdateRequest,
 )
 from pipelines.reconciliation_pipeline import ReconciliationPipeline
 from repositories.audit_log import AuditLogger
@@ -30,6 +32,7 @@ from services.analytics.anomaly_service import AnomalyDetectionService
 from services.analytics.dashboard_service import summary as dashboard_summary
 from services.analytics.feedback_service import FeedbackService
 from services.assistants.assistant_service import AssistantService
+from services.assistants.review_service import ReviewService
 from services.extraction.categorization_service import ExpenseCategorizationService
 from services.extraction.extraction_service import FieldExtractionService
 from services.extraction.normalization_service import NormalizationService
@@ -47,6 +50,7 @@ from services.analytics.advanced_report_service import AdvancedReportService
 from services.accounting.ai_accountant import FinancialReportService as LegacyFinancialReportService
 from services.financial_reports.report_service import FinancialReportService
 from models.financial_schemas import ReportConfig
+from services.policy_rag.knowledge_base_service import KnowledgeBaseService
 from database import db_session
 from models.db_models import Document, LedgerEntry
 from models.schemas import DocumentResult, PolicyFlag
@@ -96,6 +100,15 @@ services = {
 advanced_report_service = AdvancedReportService(
     llm_client, output_dir=DATA_DIR / "reports"
 )
+
+knowledge_service = KnowledgeBaseService(llm_client, services["policy"])
+review_service = ReviewService(services["feedback"], advanced_report_service, llm_client, policy_service=services["policy"])
+
+try:
+    # 如需从 shadow_rules.json 首次导入规则，可调用 seed_shadow_rules()
+    knowledge_service.refresh_vector_store()
+except Exception:
+    logging.exception("init knowledge base refresh failed")
 
 pipeline = ReconciliationPipeline(**services)
 audit_logger = AuditLogger(DATA_DIR / "cache" / "audit.log")
@@ -211,6 +224,8 @@ def list_invoices() -> Any:
     q = request.args.get("q", "")
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
+    page = max(1, int(request.args.get("page", 1) or 1))
+    page_size = max(1, int(request.args.get("page_size", 6) or 6))
     with db_session() as session:
         query = session.query(Document)
         # 时间区间过滤（基于创建时间）
@@ -240,7 +255,13 @@ def list_invoices() -> Any:
                 | (Document.vendor.ilike(like_q))
                 | (Document.category.ilike(like_q))
             )
-        query = query.order_by(Document.created_at.desc())
+        total = query.count()
+
+        # 先获取按时间升序的 id，用于生成稳定的数字 display_id（1 开始，最早=1）
+        asc_ids = [doc.id for doc in query.order_by(Document.created_at.asc()).all()]
+        id_to_display = {doc_id: idx + 1 for idx, doc_id in enumerate(asc_ids)}
+
+        query = query.order_by(Document.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
         docs = query.all()
         result = []
         for doc in docs:
@@ -267,6 +288,7 @@ def list_invoices() -> Any:
             voucher_url = url_for("get_voucher_pdf", doc_id=doc.id) if voucher_path else None
             result.append(
                 {
+                    "display_id": id_to_display.get(doc.id, doc.id),
                     "id": doc.id,
                     "file_name": doc.file_name,
                     "vendor": doc.vendor,
@@ -281,7 +303,9 @@ def list_invoices() -> Any:
                     "entries": entries,
                 }
             )
-    return jsonify({"success": True, "data": result})
+    return jsonify(
+        {"success": True, "data": {"items": result, "total": total, "page": page, "page_size": page_size}}
+    )
 
 
 
@@ -492,6 +516,8 @@ def list_vouchers() -> Any:
     q = request.args.get("q", "")
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
+    page = max(1, int(request.args.get("page", 1) or 1))
+    page_size = max(1, int(request.args.get("page_size", 6) or 6))
 
     with db_session() as session:
         query = session.query(Document).filter(Document.raw_result.isnot(None))
@@ -558,10 +584,23 @@ def list_vouchers() -> Any:
             )
 
         result = list(grouped.values())
-        # 按凭证号排序
-        result.sort(key=lambda x: (x.get("voucher_no") or 0))
 
-    return jsonify({"success": True, "data": result})
+        # 先按时间升序生成 display_id（最早=1），再按时间降序分页，最新在前
+        def _created_at(row):
+            return row.get("created_at") or ""
+
+        for idx, row in enumerate(sorted(result, key=_created_at)):
+            row["display_id"] = idx + 1
+
+        result.sort(key=_created_at, reverse=True)
+        total = len(result)
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_items = result[start:end]
+
+    return jsonify(
+        {"success": True, "data": {"items": page_items, "total": total, "page": page, "page_size": page_size}}
+    )
 
 
 @app.delete("/api/v1/vouchers")
@@ -803,6 +842,184 @@ def collect_feedback() -> Any:
     services["feedback"].record(request_model)
     audit_logger.log("feedback", {"count": len(request_model.corrections)})
     return jsonify({"success": True})
+
+
+@app.get("/api/v1/review/queue")
+def review_queue() -> Any:
+    status = request.args.get("status") or "uploaded"
+    if status == "all":
+        status = None
+    q = request.args.get("q") or ""
+    limit = min(200, int(request.args.get("limit", 50) or 50))
+    try:
+        data = review_service.list_queue(status=status, q=q, limit=limit)
+        return jsonify({"success": True, "data": data})
+    except Exception as exc:
+        logging.exception("review queue error")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.get("/api/v1/review/<doc_id>")
+def review_detail(doc_id: str) -> Any:
+    try:
+        data = review_service.detail(doc_id)
+        return jsonify({"success": True, "data": data})
+    except Exception as exc:
+        logging.exception("review detail error")
+        return jsonify({"success": False, "error": str(exc)}), 404
+
+
+@app.post("/api/v1/review/<doc_id>/update")
+def review_update(doc_id: str) -> Any:
+    try:
+        payload = request.get_json(force=True)
+        req = ReviewUpdateRequest(**payload)
+        data = review_service.apply_changes(doc_id, req)
+        return jsonify({"success": True, "data": data})
+    except Exception as exc:
+        logging.exception("review update error")
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@app.post("/api/v1/review/<doc_id>/approve")
+def review_approve(doc_id: str) -> Any:
+    body = request.get_json(silent=True) or {}
+    reviewer_id = body.get("reviewer_id")
+    comment = body.get("comment")
+    try:
+        data = review_service.approve(doc_id, reviewer_id=reviewer_id, comment=comment)
+        return jsonify({"success": True, "data": data})
+    except Exception as exc:
+        logging.exception("review approve error")
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@app.post("/api/v1/review/batch/approve")
+def review_batch_approve() -> Any:
+    body = request.get_json(force=True) or {}
+    doc_ids = body.get("doc_ids") or []
+    reviewer_id = body.get("reviewer_id")
+    if not isinstance(doc_ids, list) or not doc_ids:
+        return jsonify({"success": False, "error": "doc_ids required"}), 400
+    try:
+        count = review_service.batch_approve(doc_ids, reviewer_id=reviewer_id)
+        return jsonify({"success": True, "approved": count})
+    except Exception as exc:
+        logging.exception("batch approve error")
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@app.get("/api/v1/review/<doc_id>/reports")
+def review_reports(doc_id: str) -> Any:
+    try:
+        data = review_service.generate_reports(doc_id)
+        return jsonify({"success": True, "data": data})
+    except Exception as exc:
+        logging.exception("review report error")
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@app.get("/api/v1/review/training_samples")
+def review_training_samples() -> Any:
+    limit = int(request.args.get("limit", 8) or 8)
+    try:
+        samples = review_service.training_samples(limit=limit)
+        return jsonify({"success": True, "data": samples})
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@app.post("/api/v1/review/backfill_policy")
+def review_backfill_policy() -> Any:
+    """批量为未跑过 RAG 的票据补充 policy_flags，避免点击详情时耗时调用。"""
+    limit = int(request.args.get("limit", 50) or 50)
+    try:
+        meta = review_service.backfill_policy(limit=limit)
+        return jsonify({"success": True, "data": meta})
+    except Exception as exc:
+        logging.exception("review backfill error")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.get("/api/v1/knowledge/rules")
+def list_rules() -> Any:
+    q = request.args.get("q")
+    category = request.args.get("category")
+    page = int(request.args.get("page", 1) or 1)
+    page_size = int(request.args.get("page_size", 10) or 10)
+    try:
+        data = knowledge_service.list_rules(q=q, category=category, page=page, page_size=page_size)
+        return jsonify({"success": True, "data": data})
+    except Exception as exc:
+        logging.exception("knowledge list error")
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@app.get("/api/v1/knowledge/rules/<rule_id>")
+def rule_detail(rule_id: str) -> Any:
+    data = knowledge_service.get_rule(rule_id)
+    if not data:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    return jsonify({"success": True, "data": data})
+
+
+@app.get("/api/v1/knowledge/rules/<rule_id>/versions")
+def rule_versions(rule_id: str) -> Any:
+    try:
+        versions = knowledge_service.list_versions(rule_id)
+        return jsonify({"success": True, "data": versions})
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@app.post("/api/v1/knowledge/rules")
+def create_rule() -> Any:
+    try:
+        payload = request.get_json(force=True)
+        req = KnowledgeRulePayload(**payload)
+        user_id = payload.get("user_id") or session.get("user_id")
+        data = knowledge_service.create_rule(req, user_id=user_id)
+        return jsonify({"success": True, "data": data})
+    except Exception as exc:
+        logging.exception("create rule error")
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@app.put("/api/v1/knowledge/rules/<rule_id>")
+def update_rule(rule_id: str) -> Any:
+    try:
+        payload = request.get_json(force=True)
+        req = KnowledgeRulePayload(**payload)
+        user_id = payload.get("user_id") or session.get("user_id")
+        data = knowledge_service.update_rule(rule_id, req, user_id=user_id)
+        return jsonify({"success": True, "data": data})
+    except Exception as exc:
+        logging.exception("update rule error")
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@app.post("/api/v1/knowledge/rules/refresh")
+def refresh_rules() -> Any:
+    try:
+        meta = knowledge_service.refresh_vector_store()
+        return jsonify({"success": True, "data": meta})
+    except Exception as exc:
+        logging.exception("refresh vector store error")
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+
+@app.delete("/api/v1/knowledge/rules")
+def delete_rules() -> Any:
+    payload = request.get_json(force=True) or {}
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"success": False, "error": "ids required"}), 400
+    try:
+        meta = knowledge_service.delete_rules(ids)
+        return jsonify({"success": True, "data": meta})
+    except Exception as exc:
+        logging.exception("delete rules error")
+        return jsonify({"success": False, "error": str(exc)}), 400
 
 
 @app.post("/api/v1/policies")

@@ -521,6 +521,106 @@ th {
   display: block;
 }
 
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+
+.chip.warning {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+.chip.danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+.chip.success {
+  background: rgba(34, 197, 94, 0.14);
+  color: #15803d;
+}
+.chip.muted {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+}
+
+.chip-group {
+  display: flex;
+  gap: 8px;
+}
+
+.actions-inline {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.timeline {
+  border-left: 2px solid var(--border);
+  padding-left: 12px;
+}
+
+.timeline-item {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.timeline-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--brand);
+  border-radius: 50%;
+  left: -17px;
+  top: 4px;
+}
+
+.timeline-content {
+  background: var(--bg-soft);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.timeline-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.mini-tabs {
+  margin: 0 0 10px;
+}
+.mini-tabs button {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.desc-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.desc-toggle {
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1;
+}
+
 .login-body {
   background: radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.25), transparent 30%),
     radial-gradient(circle at 80% 10%, rgba(14, 165, 233, 0.28), transparent 30%),
@@ -601,4 +701,262 @@ th {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ---------- AI 审核（RAG 风格） ---------- */
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.chip-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.chip-check.active {
+  border-color: var(--brand);
+  background: #eef2ff;
+  color: var(--brand-2);
+}
+
+.chip-check input {
+  margin: 0;
+}
+
+.chip-group.wrap {
+  flex-wrap: wrap;
+}
+
+.chip-group.compact {
+  gap: 8px;
+}
+
+.risk-board {
+  display: grid;
+  grid-template-columns: 1.25fr 0.95fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.risk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.drawer {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  min-height: 520px;
+  position: relative;
+}
+
+.drawer-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(2px);
+  border-radius: 12px;
+  z-index: 4;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid rgba(37, 99, 235, 0.2);
+  border-top-color: var(--brand);
+  animation: spin 0.8s linear infinite;
+}
+
+.drawer-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 48px 16px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.drawer-detail.hidden {
+  display: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pill-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+
+.pill-tabs button {
+  border-radius: 999px;
+}
+
+.tab-pane {
+  display: none;
+  margin-top: 8px;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summary-grid .field {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.summary-grid .big {
+  font-size: 20px;
+  margin: 6px 0 0;
+  font-weight: 700;
+}
+
+.conclusion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  margin-top: 10px;
+}
+
+.conclusion-text {
+  margin: 6px 0 0;
+  font-weight: 600;
+}
+
+.sheet {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.rule-cards {
+  display: grid;
+  gap: 10px;
+}
+
+.rule-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--bg-soft);
+  font-size: 12px;
+}
+
+.flag-chip.danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.flag-chip.warning {
+  background: rgba(245, 158, 11, 0.14);
+  color: #92400e;
+}
+
+.flag-chip.info {
+  background: rgba(14, 165, 233, 0.14);
+  color: #075985;
+}
+
+.collapsible {
+  margin-top: 12px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+
+.drawer-actions {
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(180deg, transparent, #fff 40%);
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.image-frame {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+}
+
+.image-frame img {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 10px;
+}
+
+.highlight-list {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
 }

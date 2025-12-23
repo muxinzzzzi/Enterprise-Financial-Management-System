@@ -161,6 +161,30 @@ class FeedbackRequest(BaseModel):
     corrections: List[FeedbackItem]
 
 
+class ReviewChange(BaseModel):
+    field_name: str
+    new_value: Any
+    reason: str | None = None
+    comment: str | None = None
+
+
+class ReviewUpdateRequest(BaseModel):
+    changes: List[ReviewChange]
+    reviewer_id: str | None = None
+    auto_approve: bool = False
+
+
+class KnowledgeRulePayload(BaseModel):
+    title: str
+    content: str
+    summary: str | None = None
+    category: str | None = None
+    tags: List[str] = Field(default_factory=list)
+    risk_tags: List[str] = Field(default_factory=list)
+    scope: List[str] = Field(default_factory=list)
+    change_note: str | None = None
+
+
 __all__ = [
     "AnalyticsRecord",
     "AnalyticsInsight",
@@ -175,4 +199,7 @@ __all__ = [
     "PolicyFlag",
     "ReconciliationRequest",
     "ReconciliationResponse",
+    "ReviewChange",
+    "ReviewUpdateRequest",
+    "KnowledgeRulePayload",
 ]

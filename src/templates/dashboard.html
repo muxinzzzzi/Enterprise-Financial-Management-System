@@ -203,6 +203,7 @@
                   </tbody>
                 </table>
               </div>
+              <div id="library-pagination" class="pagination"></div>
             </div>
 
             <!-- 凭证库 -->
@@ -235,6 +236,7 @@
                   </tbody>
                 </table>
               </div>
+              <div id="voucher-pagination" class="pagination"></div>
             </div>
 
           </section>
@@ -483,25 +485,274 @@
           </div>
         </div>
 
-        <!-- AI 审核/知识库 占位 -->
+        <!-- AI 审核 -->
         <div data-view-section="assistant" class="view-section">
           <header class="topbar">
             <div>
               <p class="eyebrow">AI 审核</p>
-              <h2>智能问答</h2>
-              <p class="hint">在“仪表盘”视图中使用右侧问答区，保持体验一致</p>
+              <h2>风险队列（RAG）</h2>
+              <p class="hint">只看风险发票，结合知识库命中与证据链</p>
+            </div>
+            <div class="top-actions">
+              <button id="risk-refresh" class="ghost">刷新风险队列</button>
             </div>
           </header>
+
+          <section class="card">
+            <div class="filter-grid">
+              <label>搜索
+                <input id="risk-search" placeholder="发票号 / 供应商 / 抬头 / 文件名" />
+              </label>
+              <label>起始日期
+                <input type="date" id="risk-date-start" />
+              </label>
+              <label>结束日期
+                <input type="date" id="risk-date-end" />
+              </label>
+              <div class="status-filter">
+                <p class="hint">状态筛选（默认待审核 + 待补充）</p>
+                <div class="chip-group compact" id="risk-status-group">
+                  <label class="chip-check active"><input type="checkbox" data-risk-status value="uploaded" checked /> 待审核</label>
+                  <label class="chip-check active"><input type="checkbox" data-risk-status value="reviewing" checked /> 待补充</label>
+                  <label class="chip-check"><input type="checkbox" data-risk-status value="review_rejected" /> 已拒绝</label>
+                  <label class="chip-check"><input type="checkbox" data-risk-status value="review_approved" /> 已通过</label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card risk-board">
+            <div class="risk-list">
+              <div class="table-wrap">
+                <table id="risk-table">
+                  <thead>
+                    <tr>
+                      <th style="width:36px;"><input type="checkbox" id="risk-master" /></th>
+                      <th style="width:120px;">ID</th>
+                      <th>文件</th>
+                      <th>供应商</th>
+                      <th>发票日期</th>
+                      <th>金额</th>
+                      <th>类别</th>
+                      <th>风险原因</th>
+                      <th>状态</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td colspan="10">加载中...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div id="risk-pagination" class="pagination"></div>
+            </div>
+
+            <aside id="risk-drawer" class="drawer">
+              <div id="risk-loading" class="drawer-loading hidden">
+                <div class="spinner"></div>
+                <span>审核中…</span>
+              </div>
+              <div id="risk-empty" class="drawer-empty">选择风险发票查看详情</div>
+              <div id="risk-detail" class="drawer-detail hidden">
+                <div class="drawer-head">
+                  <div>
+                    <p class="eyebrow">AI 审核详情</p>
+                    <h3 id="drawer-title">发票 #--</h3>
+                    <p class="hint" id="drawer-subtitle">--</p>
+                  </div>
+                  <button id="risk-drawer-close" class="ghost">关闭</button>
+                </div>
+
+                <div class="tabs pill-tabs" id="risk-tabs">
+                  <button data-risk-tab="summary" class="active">Summary</button>
+                  <button data-risk-tab="rag">RAG 校验</button>
+                  <button data-risk-tab="evidence">Evidence</button>
+                </div>
+
+                <div class="tab-pane active" data-risk-pane="summary">
+                  <div class="summary-grid">
+                    <div class="field">
+                      <p class="eyebrow">金额</p>
+                      <p id="summary-amount" class="big">--</p>
+                    </div>
+                    <div class="field">
+                      <p class="eyebrow">发票号</p>
+                      <p id="summary-invoice-no">--</p>
+                    </div>
+                    <div class="field">
+                      <p class="eyebrow">抬头</p>
+                      <p id="summary-buyer">--</p>
+                    </div>
+                    <div class="field">
+                      <p class="eyebrow">供应商</p>
+                      <p id="summary-vendor">--</p>
+                    </div>
+                    <div class="field">
+                      <p class="eyebrow">发票日期</p>
+                      <p id="summary-date">--</p>
+                    </div>
+                    <div class="field">
+                      <p class="eyebrow">类别</p>
+                      <p id="summary-category">--</p>
+                    </div>
+                  </div>
+                  <div class="conclusion">
+                    <div>
+                      <p class="eyebrow">合规结论</p>
+                      <p id="summary-conclusion" class="conclusion-text">等待分析...</p>
+                    </div>
+                    <button id="summary-view-rules" class="ghost">查看命中规则</button>
+                  </div>
+
+                  <div id="need-info-panel" class="sheet hidden">
+                    <p class="eyebrow">需要补充</p>
+                    <label class="checkbox"><input type="checkbox" id="need-attach" /> 附件</label>
+                    <label class="checkbox"><input type="checkbox" id="need-note" /> 备注说明</label>
+                    <label class="checkbox"><input type="checkbox" id="need-approval" /> 审批编号</label>
+                    <label>备注
+                      <textarea id="need-comment" placeholder="可选"></textarea>
+                    </label>
+                    <div class="actions-inline">
+                      <button id="need-info-save" class="primary">保存</button>
+                      <button id="need-info-cancel" class="ghost">取消</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="tab-pane" data-risk-pane="rag">
+                  <div>
+                    <p class="eyebrow">Flags</p>
+                    <div id="rag-flags" class="chip-group wrap"></div>
+                  </div>
+                  <div style="margin-top:12px;">
+                    <p class="eyebrow">命中规则</p>
+                    <div id="rag-rules" class="rule-cards"></div>
+                  </div>
+                  <div class="collapsible">
+                    <button id="rag-explain-toggle" class="ghost">展开 AI 解释</button>
+                    <div id="rag-explain-body" class="hidden">
+                      <p class="eyebrow">触发依据</p>
+                      <div id="rag-basis"></div>
+                      <p class="eyebrow">建议动作</p>
+                      <div id="rag-next"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="tab-pane" data-risk-pane="evidence">
+                  <div class="evidence-grid">
+                    <div>
+                      <p class="eyebrow">OCR 原图</p>
+                      <div class="image-frame">
+                        <img id="evidence-image" alt="发票预览" />
+                      </div>
+                    </div>
+                    <div>
+                      <p class="eyebrow">命中字段</p>
+                      <div id="evidence-highlights" class="highlight-list">--</div>
+                    </div>
+                  </div>
+                  <details>
+                    <summary>OCR 原文</summary>
+                    <pre id="evidence-ocr" class="surface small">--</pre>
+                  </details>
+                  <details>
+                    <summary>LLM 抽取 JSON</summary>
+                    <pre id="evidence-json" class="surface small">--</pre>
+                  </details>
+                  <details>
+                    <summary>RAG 检索命中</summary>
+                    <pre id="evidence-rag-hits" class="surface small">--</pre>
+                  </details>
+                  <div>
+                    <p class="eyebrow">变更记录</p>
+                    <div id="audit-trail" class="timeline">暂无</div>
+                  </div>
+                </div>
+
+                <div class="drawer-actions">
+                  <div class="actions-inline">
+                    <button id="action-approve" class="primary">✅ 通过</button>
+                    <button id="action-need-info" class="ghost">🟡 需要补充</button>
+                    <button id="action-reject" class="danger ghost">🔴 拒绝</button>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </section>
         </div>
 
+        <!-- 知识库 -->
         <div data-view-section="knowledge" class="view-section">
           <header class="topbar">
             <div>
               <p class="eyebrow">知识库</p>
-              <h2>策略与规则</h2>
-              <p class="hint">可结合 RAG 与影子规则，后续可添加管理页面</p>
+              <h2>报销规则与版本管理</h2>
+              <p class="hint">展示、搜索、添加、编辑规则，自动同步到 RAG 校验</p>
+            </div>
+            <div class="top-actions">
+              <button id="kb-sync" class="ghost">同步到向量索引</button>
             </div>
           </header>
+
+          <section class="card">
+            <div class="toolbar">
+              <input id="kb-search" placeholder="按标题/内容搜索" />
+              <button id="kb-search-btn" class="ghost">筛选</button>
+              <button id="kb-reset-btn" class="ghost">删除选中</button>
+            </div>
+            <div class="table-wrap">
+              <table id="kb-table">
+                <thead>
+                  <tr>
+                    <th style="width:36px;"><input type="checkbox" id="kb-master" /></th>
+                    <th>标题</th>
+                    <th>标签</th>
+                    <th>描述</th>
+                    <th>更新时间</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="5">加载中...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="kb-pagination" class="pagination"></div>
+          </section>
+
+          <section class="card two-col">
+            <div>
+              <p class="eyebrow">规则编辑</p>
+              <h3 id="kb-form-title">新增规则</h3>
+              <form id="kb-form" class="stacked">
+                <input type="hidden" id="kb-rule-id" />
+                <label>标题
+                  <input id="kb-title" required />
+                </label>
+                <label>标签（逗号分隔）
+                  <input id="kb-tags" placeholder="出租车,住宿,机票" />
+                </label>
+                <label>描述（可选，用于前端展示）
+                  <textarea id="kb-desc" placeholder="不填则自动由模型摘要，首次保存后复用"></textarea>
+                </label>
+                <label>正文（支持富文本粘贴）
+                  <textarea id="kb-content" rows="6" placeholder="填写报销规则、额度、例外、凭证要求..."></textarea>
+                </label>
+                <label>变更说明
+                  <input id="kb-change-note" placeholder="如：提升二线城市住宿上限" />
+                </label>
+                <div class="actions-inline">
+                  <button type="button" id="kb-save">保存</button>
+                  <button type="button" id="kb-reset">清空</button>
+                </div>
+              </form>
+            </div>
+            <div>
+              <p class="eyebrow">版本历史</p>
+              <h3>最近变更</h3>
+              <div id="kb-versions" class="timeline">请选择规则以查看历史</div>
+            </div>
+          </section>
         </div>
       </main>
     </div>
