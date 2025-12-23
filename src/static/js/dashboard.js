@@ -23,6 +23,10 @@ const reportTabButtons = document.querySelectorAll('[data-report-tab]');
 const reportPanes = document.querySelectorAll('[data-report-pane]');
 const allReportTabButtons = document.querySelectorAll('[data-all-report-tab]');
 const allReportContents = document.querySelectorAll('[data-all-report-content]');
+const financialTabButtons = document.querySelectorAll('[data-financial-tab]');
+const financialPanes = document.querySelectorAll('[data-financial-pane]');
+const allFinancialTabButtons = document.querySelectorAll('[data-all-financial-tab]');
+const allFinancialContents = document.querySelectorAll('[data-all-financial-content]');
 assistantForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
   const question = document.getElementById('assistant-question').value.trim();
@@ -512,22 +516,26 @@ const initInvoiceTabs = () => {
   });
 };
 
-const initReportTabs = () => {
-  reportTabButtons.forEach((btn) => {
+// 移除旧的报表标签页逻辑，现在使用financial-report-tabs
+
+// 移除旧的all-report-tabs逻辑
+
+const initFinancialTabs = () => {
+  financialTabButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
-      const tab = btn.dataset.reportTab;
-      reportTabButtons.forEach((b) => b.classList.toggle('active', b === btn));
-      reportPanes.forEach((pane) => pane.classList.toggle('active', pane.dataset.reportPane === tab));
+      const tab = btn.dataset.financialTab;
+      financialTabButtons.forEach((b) => b.classList.toggle('active', b === btn));
+      financialPanes.forEach((pane) => pane.classList.toggle('active', pane.dataset.financialPane === tab));
     });
   });
 };
 
-const initAllReportTabs = () => {
-  allReportTabButtons.forEach((btn) => {
+const initAllFinancialTabs = () => {
+  allFinancialTabButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
-      const tab = btn.dataset.allReportTab;
-      allReportTabButtons.forEach((b) => b.classList.toggle('active', b === btn));
-      allReportContents.forEach((pane) => pane.classList.toggle('active', pane.dataset.allReportContent === tab));
+      const tab = btn.dataset.allFinancialTab;
+      allFinancialTabButtons.forEach((b) => b.classList.toggle('active', b === btn));
+      allFinancialContents.forEach((pane) => pane.classList.toggle('active', pane.dataset.allFinancialContent === tab));
     });
   });
 };
@@ -679,12 +687,409 @@ const fetchCurrentUser = async () => {
   }
 };
 
+// 财务报表表单处理
+const initFinancialReports = () => {
+  // 资产负债表表单
+  const balanceSheetForm = document.getElementById('balance-sheet-form');
+  balanceSheetForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const loadingEl = document.getElementById('balance-sheet-loading');
+    const outputEl = document.getElementById('balance-sheet-output');
+    const aiEl = document.getElementById('balance-sheet-ai');
+    const aiContentEl = document.getElementById('balance-sheet-ai-content');
+    
+    loadingEl.style.display = 'block';
+    outputEl.textContent = '生成中...';
+    
+    const payload = {
+      start_date: document.getElementById('balance-sheet-start')?.value || undefined,
+      end_date: document.getElementById('balance-sheet-end')?.value || undefined,
+      period_type: document.getElementById('balance-sheet-period')?.value || 'month',
+      currency: document.getElementById('balance-sheet-currency')?.value || 'CNY',
+      company_name: document.getElementById('balance-sheet-company')?.value || undefined,
+      enable_ai_analysis: false, // AI分析改为按钮触发
+    };
+    if (state.user?.id) payload.user_id = state.user.id;
+    
+    try {
+      const resp = await fetch('/api/v1/financial-reports/balance-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || '生成失败');
+      
+      outputEl.innerHTML = window.marked.parse(data.markdown_content || '');
+      
+      // 显示PDF和AI按钮
+      const pdfPreviewBtn = document.getElementById('balance-sheet-pdf-preview');
+      const pdfDownloadBtn = document.getElementById('balance-sheet-pdf-download');
+      const aiBtn = document.getElementById('balance-sheet-ai-btn');
+      
+      if (pdfPreviewBtn) {
+        pdfPreviewBtn.style.display = 'inline-block';
+        pdfPreviewBtn.onclick = () => {
+          // 优先使用PDF路径，如果没有则使用markdown路径（后端会自动转换）
+          const filePath = data.pdf_path || data.markdown_path;
+          if (filePath) {
+            window.open(`/api/v1/financial-reports/pdf/${encodeURIComponent(filePath)}`, '_blank');
+          } else {
+            generatePDF('balance-sheet', payload, pdfPreviewBtn, pdfDownloadBtn);
+          }
+        };
+      }
+      if (pdfDownloadBtn) {
+        pdfDownloadBtn.style.display = 'inline-block';
+        pdfDownloadBtn.onclick = () => {
+          // 优先使用PDF路径，如果没有则使用markdown路径（后端会自动转换）
+          const filePath = data.pdf_path || data.markdown_path;
+          if (filePath) {
+            window.location.href = `/api/v1/financial-reports/pdf/${encodeURIComponent(filePath)}?download=1`;
+          } else {
+            generatePDF('balance-sheet', payload, pdfPreviewBtn, pdfDownloadBtn, true);
+          }
+        };
+      }
+      if (aiBtn) {
+        aiBtn.style.display = 'inline-block';
+        aiBtn.onclick = () => generateAIAnalysis('balance-sheet', payload, aiBtn, aiEl, aiContentEl);
+      }
+      
+      // 保存报表数据到state
+      state.balanceSheetData = data;
+    } catch (err) {
+      outputEl.textContent = `生成失败: ${err.message || err}`;
+    } finally {
+      loadingEl.style.display = 'none';
+    }
+  });
+
+  // 利润表表单
+  const incomeStatementForm = document.getElementById('income-statement-form');
+  incomeStatementForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const loadingEl = document.getElementById('income-statement-loading');
+    const outputEl = document.getElementById('income-statement-output');
+    const aiEl = document.getElementById('income-statement-ai');
+    const aiContentEl = document.getElementById('income-statement-ai-content');
+    
+    loadingEl.style.display = 'block';
+    outputEl.textContent = '生成中...';
+    
+    const payload = {
+      start_date: document.getElementById('income-statement-start')?.value || undefined,
+      end_date: document.getElementById('income-statement-end')?.value || undefined,
+      period_type: document.getElementById('income-statement-period')?.value || 'month',
+      currency: document.getElementById('income-statement-currency')?.value || 'CNY',
+      company_name: document.getElementById('income-statement-company')?.value || undefined,
+      enable_ai_analysis: false,
+    };
+    if (state.user?.id) payload.user_id = state.user.id;
+    
+    try {
+      const resp = await fetch('/api/v1/financial-reports/income-statement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || '生成失败');
+      
+      outputEl.innerHTML = window.marked.parse(data.markdown_content || '');
+      
+      const pdfPreviewBtn = document.getElementById('income-statement-pdf-preview');
+      const pdfDownloadBtn = document.getElementById('income-statement-pdf-download');
+      const aiBtn = document.getElementById('income-statement-ai-btn');
+      
+      if (pdfPreviewBtn) {
+        pdfPreviewBtn.style.display = 'inline-block';
+        pdfPreviewBtn.onclick = () => {
+          const filePath = data.pdf_path || data.markdown_path;
+          if (filePath) {
+            window.open(`/api/v1/financial-reports/pdf/${encodeURIComponent(filePath)}`, '_blank');
+          } else {
+            generatePDF('income-statement', payload, pdfPreviewBtn, pdfDownloadBtn);
+          }
+        };
+      }
+      if (pdfDownloadBtn) {
+        pdfDownloadBtn.style.display = 'inline-block';
+        pdfDownloadBtn.onclick = () => {
+          const filePath = data.pdf_path || data.markdown_path;
+          if (filePath) {
+            window.location.href = `/api/v1/financial-reports/pdf/${encodeURIComponent(filePath)}?download=1`;
+          } else {
+            generatePDF('income-statement', payload, pdfPreviewBtn, pdfDownloadBtn, true);
+          }
+        };
+      }
+      if (aiBtn) {
+        aiBtn.style.display = 'inline-block';
+        aiBtn.onclick = () => generateAIAnalysis('income-statement', payload, aiBtn, aiEl, aiContentEl);
+      }
+      
+      state.incomeStatementData = data;
+    } catch (err) {
+      outputEl.textContent = `生成失败: ${err.message || err}`;
+    } finally {
+      loadingEl.style.display = 'none';
+    }
+  });
+
+  // 现金流量表表单
+  const cashFlowForm = document.getElementById('cash-flow-form');
+  cashFlowForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const loadingEl = document.getElementById('cash-flow-loading');
+    const outputEl = document.getElementById('cash-flow-output');
+    const aiEl = document.getElementById('cash-flow-ai');
+    const aiContentEl = document.getElementById('cash-flow-ai-content');
+    
+    loadingEl.style.display = 'block';
+    outputEl.textContent = '生成中...';
+    
+    const payload = {
+      start_date: document.getElementById('cash-flow-start')?.value || undefined,
+      end_date: document.getElementById('cash-flow-end')?.value || undefined,
+      period_type: document.getElementById('cash-flow-period')?.value || 'month',
+      currency: document.getElementById('cash-flow-currency')?.value || 'CNY',
+      company_name: document.getElementById('cash-flow-company')?.value || undefined,
+      enable_ai_analysis: false,
+    };
+    if (state.user?.id) payload.user_id = state.user.id;
+    
+    try {
+      const resp = await fetch('/api/v1/financial-reports/cash-flow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || '生成失败');
+      
+      outputEl.innerHTML = window.marked.parse(data.markdown_content || '');
+      
+      const pdfPreviewBtn = document.getElementById('cash-flow-pdf-preview');
+      const pdfDownloadBtn = document.getElementById('cash-flow-pdf-download');
+      const aiBtn = document.getElementById('cash-flow-ai-btn');
+      
+      if (pdfPreviewBtn) {
+        pdfPreviewBtn.style.display = 'inline-block';
+        pdfPreviewBtn.onclick = () => {
+          const filePath = data.pdf_path || data.markdown_path;
+          if (filePath) {
+            window.open(`/api/v1/financial-reports/pdf/${encodeURIComponent(filePath)}`, '_blank');
+          } else {
+            generatePDF('cash-flow', payload, pdfPreviewBtn, pdfDownloadBtn);
+          }
+        };
+      }
+      if (pdfDownloadBtn) {
+        pdfDownloadBtn.style.display = 'inline-block';
+        pdfDownloadBtn.onclick = () => {
+          const filePath = data.pdf_path || data.markdown_path;
+          if (filePath) {
+            window.location.href = `/api/v1/financial-reports/pdf/${encodeURIComponent(filePath)}?download=1`;
+          } else {
+            generatePDF('cash-flow', payload, pdfPreviewBtn, pdfDownloadBtn, true);
+          }
+        };
+      }
+      if (aiBtn) {
+        aiBtn.style.display = 'inline-block';
+        aiBtn.onclick = () => generateAIAnalysis('cash-flow', payload, aiBtn, aiEl, aiContentEl);
+      }
+      
+      state.cashFlowData = data;
+    } catch (err) {
+      outputEl.textContent = `生成失败: ${err.message || err}`;
+    } finally {
+      loadingEl.style.display = 'none';
+    }
+  });
+
+  // 生成所有财务报表表单
+  const allFinancialReportsForm = document.getElementById('all-financial-reports-form');
+  allFinancialReportsForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const loadingEl = document.getElementById('all-financial-loading');
+    const balanceSheetEl = document.getElementById('all-financial-balance-sheet');
+    const incomeStatementEl = document.getElementById('all-financial-income-statement');
+    const cashFlowEl = document.getElementById('all-financial-cash-flow');
+    
+    loadingEl.style.display = 'block';
+    balanceSheetEl.textContent = '生成中...';
+    incomeStatementEl.textContent = '生成中...';
+    cashFlowEl.textContent = '生成中...';
+    
+    const payload = {
+      start_date: document.getElementById('all-financial-start')?.value || undefined,
+      end_date: document.getElementById('all-financial-end')?.value || undefined,
+      period_type: document.getElementById('all-financial-period')?.value || 'month',
+      currency: document.getElementById('all-financial-currency')?.value || 'CNY',
+      company_name: document.getElementById('all-financial-company')?.value || undefined,
+      enable_ai_analysis: false,
+    };
+    if (state.user?.id) payload.user_id = state.user.id;
+    
+    try {
+      const resp = await fetch('/api/v1/financial-reports/all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || '生成失败');
+      
+      const reports = data.reports || {};
+      
+      // 资产负债表
+      if (reports.balance_sheet?.markdown_content) {
+        balanceSheetEl.innerHTML = window.marked.parse(reports.balance_sheet.markdown_content);
+        setupReportButtons('all-financial-balance-sheet', reports.balance_sheet, 'balance-sheet', payload);
+      } else {
+        balanceSheetEl.textContent = '生成失败';
+      }
+      
+      // 利润表
+      if (reports.income_statement?.markdown_content) {
+        incomeStatementEl.innerHTML = window.marked.parse(reports.income_statement.markdown_content);
+        setupReportButtons('all-financial-income-statement', reports.income_statement, 'income-statement', payload);
+      } else {
+        incomeStatementEl.textContent = '生成失败';
+      }
+      
+      // 现金流量表
+      if (reports.cash_flow?.markdown_content) {
+        cashFlowEl.innerHTML = window.marked.parse(reports.cash_flow.markdown_content);
+        setupReportButtons('all-financial-cash-flow', reports.cash_flow, 'cash-flow', payload);
+      } else {
+        cashFlowEl.textContent = '生成失败';
+      }
+      
+      state.allFinancialReportsData = data;
+    } catch (err) {
+      balanceSheetEl.textContent = `生成失败: ${err.message || err}`;
+      incomeStatementEl.textContent = `生成失败: ${err.message || err}`;
+      cashFlowEl.textContent = `生成失败: ${err.message || err}`;
+    } finally {
+      loadingEl.style.display = 'none';
+    }
+  });
+};
+
+// 辅助函数：生成PDF
+const generatePDF = async (reportType, payload, previewBtn, downloadBtn, isDownload = false) => {
+  try {
+    if (previewBtn) {
+      previewBtn.disabled = true;
+      previewBtn.textContent = '生成PDF中...';
+    }
+    
+    const resp = await fetch(`/api/v1/financial-reports/${reportType}/pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || 'PDF生成失败');
+    
+    // 如果PDF路径存在，直接使用；否则使用markdown路径
+    const filePath = data.pdf_path || data.markdown_path;
+    if (!filePath) {
+      throw new Error('未找到文件路径');
+    }
+    
+    if (isDownload) {
+      window.location.href = `/api/v1/financial-reports/pdf/${encodeURIComponent(filePath)}?download=1`;
+    } else {
+      window.open(`/api/v1/financial-reports/pdf/${encodeURIComponent(filePath)}`, '_blank');
+    }
+  } catch (err) {
+    alert(`PDF生成失败: ${err.message || err}`);
+  } finally {
+    if (previewBtn) {
+      previewBtn.disabled = false;
+      previewBtn.textContent = '预览PDF';
+    }
+  }
+};
+
+// 辅助函数：生成AI分析
+const generateAIAnalysis = async (reportType, payload, aiBtn, aiEl, aiContentEl) => {
+  try {
+    aiBtn.disabled = true;
+    aiBtn.textContent = '生成中...';
+    aiEl.style.display = 'block';
+    aiContentEl.textContent = '正在生成AI分析...';
+    
+    const payloadWithAI = { ...payload, enable_ai_analysis: true };
+    const resp = await fetch(`/api/v1/financial-reports/${reportType}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadWithAI),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || 'AI分析生成失败');
+    
+    if (data.ai_analysis) {
+      aiContentEl.innerHTML = window.marked.parse(data.ai_analysis);
+    } else {
+      aiContentEl.textContent = 'AI分析生成失败';
+    }
+  } catch (err) {
+    aiContentEl.textContent = `AI分析生成失败: ${err.message || err}`;
+  } finally {
+    aiBtn.disabled = false;
+    aiBtn.textContent = '生成AI分析';
+  }
+};
+
+// 辅助函数：设置报表按钮
+const setupReportButtons = (prefix, reportData, reportType, payload) => {
+  const pdfPreviewBtn = document.getElementById(`${prefix}-pdf-preview`);
+  const pdfDownloadBtn = document.getElementById(`${prefix}-pdf-download`);
+  const aiBtn = document.getElementById(`${prefix}-ai-btn`);
+  
+  if (pdfPreviewBtn) {
+    pdfPreviewBtn.style.display = 'inline-block';
+    pdfPreviewBtn.onclick = () => {
+      const filePath = reportData.pdf_path || reportData.markdown_path;
+      if (filePath) {
+        window.open(`/api/v1/financial-reports/pdf/${encodeURIComponent(filePath)}`, '_blank');
+      } else {
+        generatePDF(reportType, payload, pdfPreviewBtn, pdfDownloadBtn);
+      }
+    };
+  }
+  if (pdfDownloadBtn) {
+    pdfDownloadBtn.style.display = 'inline-block';
+    pdfDownloadBtn.onclick = () => {
+      const filePath = reportData.pdf_path || reportData.markdown_path;
+      if (filePath) {
+        window.location.href = `/api/v1/financial-reports/pdf/${encodeURIComponent(filePath)}?download=1`;
+      } else {
+        generatePDF(reportType, payload, pdfPreviewBtn, pdfDownloadBtn, true);
+      }
+    };
+  }
+  if (aiBtn) {
+    aiBtn.style.display = 'inline-block';
+    aiBtn.onclick = () => {
+      // 为批量报表生成AI分析需要特殊处理
+      alert('请使用单个报表页面的AI分析功能');
+    };
+  }
+};
+
 window.addEventListener('load', async () => {
   await fetchCurrentUser();
   initNav();
   initInvoiceTabs();
-  initReportTabs();
-  initAllReportTabs();
+  initFinancialTabs();
+  initAllFinancialTabs();
+  initFinancialReports();
   initLibraryActions();
   initVoucherActions();
   initCharts();
