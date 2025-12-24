@@ -26,6 +26,9 @@ class FinancialData(BaseModel):
     account_classification: Dict[str, List[str]] = Field(
         default_factory=dict, description="科目分类：资产/负债/权益/收入/费用"
     )
+    account_entry_types: Dict[str, str] = Field(
+        default_factory=dict, description="科目标记：expense/revenue"
+    )
     period_start: Optional[datetime] = Field(None, description="期间开始日期")
     period_end: Optional[datetime] = Field(None, description="期间结束日期")
     total_debit: float = Field(0.0, description="借方总额")

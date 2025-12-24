@@ -225,6 +225,8 @@ def list_invoices() -> Any:
     q = request.args.get("q", "")
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
+    category = request.args.get("category")
+    status = request.args.get("status")
     page = max(1, int(request.args.get("page", 1) or 1))
     page_size = max(1, int(request.args.get("page_size", 6) or 6))
     with db_session() as session:
@@ -248,6 +250,11 @@ def list_invoices() -> Any:
                 pass
         if user_id:
             query = query.filter(Document.user_id == user_id)
+        if category:
+            like_category = f"%{category}%"
+            query = query.filter(Document.category.ilike(like_category))
+        if status:
+            query = query.filter(Document.status == status)
         # 简单关键字搜索：文件名 / vendor / category / raw_result JSON 包含
         if q:
             like_q = f"%{q}%"

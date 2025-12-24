@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 from werkzeug.security import generate_password_hash
 
 from database import db_session
-from models.db_models import Document, User
+from models.db_models import Document, LedgerEntry, User
 from models.schemas import DocumentPayload, DocumentResult, generate_id
 from config import DATA_DIR
 
@@ -35,6 +35,7 @@ def persist_results(documents: List[DocumentResult], payloads: List[DocumentPayl
             user = _resolve_user(session, payload)
             raw = doc_result.model_dump()
             raw["policy_checked"] = True  # 生成时即标记已检查，避免后续重复 LLM
+            meta = payload.meta or {}
             doc_record = Document(
                 id=doc_result.document_id,
                 user_id=user.id,
@@ -44,11 +45,62 @@ def persist_results(documents: List[DocumentResult], payloads: List[DocumentPayl
                 amount=doc_result.total_amount,
                 tax_amount=doc_result.tax_amount,
                 currency=doc_result.currency,
-                category=doc_result.category,
+                category=meta.get("category") or doc_result.category,
                 status="uploaded",
                 raw_result=raw,
             )
             session.merge(doc_record)
+
+            # 落地会计分录到 ledger_entries，供报表使用（尤其收入分类）
+            session.query(LedgerEntry).filter_by(document_id=doc_record.id).delete()
+            journal_entries = getattr(doc_result, "journal_entries", None) or raw.get("journal_entries") or []
+
+            # 如果是收入类票据但分录为空，兜底生成收入分录：借银行存款 / 贷主营业务收入
+            invoice_type = (meta.get("invoice_type") or "").lower()
+            category = (meta.get("category") or doc_result.category or "").lower()
+            is_income = (invoice_type == "income") or ("收入" in category) or ("revenue" in invoice_type)
+            if (not journal_entries) and is_income:
+                amt = float(doc_result.total_amount or doc_result.tax_amount or 0.0)
+                if amt:
+                    journal_entries = [
+                        {
+                            "debit_account": "银行存款",
+                            "credit_account": "主营业务收入",
+                            "amount": amt,
+                            "memo": doc_result.file_name,
+                        }
+                    ]
+
+            def _entry_type(entry: dict) -> str:
+                # 优先使用上传类型/分类，其次看贷方科目
+                credit = (entry.get("credit_account") or "").lower()
+                debit = (entry.get("debit_account") or "").lower()
+                if is_income:
+                    return "revenue"
+                if "收入" in credit or "income" in credit:
+                    return "revenue"
+                if "收入" in debit or "income" in debit:
+                    return "revenue"
+                return "expense"
+
+            for entry in journal_entries:
+                try:
+                    session.add(
+                        LedgerEntry(
+                            id=generate_id("led"),
+                            document_id=doc_record.id,
+                            user_id=user.id,
+                            debit_account=entry.get("debit_account") or "",
+                            credit_account=entry.get("credit_account") or "",
+                            amount=float(entry.get("amount") or 0.0),
+                            memo=entry.get("memo") or doc_record.file_name,
+                            entry_type=_entry_type(entry),
+                            ai_generated=True,
+                            created_at=datetime.utcnow(),
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logging.warning("保存分录失败 %s: %s", doc_record.id, exc)
 
 
 def _resolve_user(session, payload: DocumentPayload) -> User:

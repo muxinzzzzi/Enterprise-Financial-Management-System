@@ -23,6 +23,10 @@ VENDOR_RULES: Dict[str, Dict[str, str]] = {
 
 # 科目标准化映射（可结合数据库/embedding 做扩展）
 ACCOUNT_NORMALIZATION_MAP: Dict[str, str] = {
+    "收入": "主营业务收入",
+    "主营业务收入": "主营业务收入",
+    "营业收入": "主营业务收入",
+    "其他收入": "其他业务收入",
     "差旅费": "管理费用-差旅费",
     "差旅费用": "管理费用-差旅费",
     "旅费": "管理费用-差旅费",
@@ -165,8 +169,12 @@ class JournalEntryService:
         vendor = document.vendor or ""
         category = document.category or "管理费用-其他"
         rule = self._match_vendor_rule(vendor)
-        debit = rule.get("debit") if rule else self._normalize_account(category)
-        credit = rule.get("credit") if rule else "银行存款"
+        if self._is_revenue(document):
+            debit = "银行存款"
+            credit = "主营业务收入"
+        else:
+            debit = rule.get("debit") if rule else self._normalize_account(category)
+            credit = rule.get("credit") if rule else "银行存款"
         return LedgerEntry(
             debit_account=debit or "管理费用-其他",
             credit_account=credit,
@@ -191,6 +199,8 @@ class JournalEntryService:
         return None
 
     def _infer_debit(self, document: DocumentResult) -> str:
+        if self._is_revenue(document):
+            return "银行存款"
         rule = self._match_vendor_rule(document.vendor or "")
         if rule:
             return rule["debit"]
@@ -205,6 +215,17 @@ class JournalEntryService:
         if any(k in vendor for k in ["美团", "饿了么"]):
             return "市场部-招待"
         return None
+
+    def _is_revenue(self, document: DocumentResult) -> bool:
+        cat = (document.category or "").lower()
+        if "收入" in cat or "revenue" in cat or "income" in cat:
+            return True
+        fields = document.normalized_fields or {}
+        struct = document.structured_fields or {}
+        biz = str(fields.get("business_type") or struct.get("business_type") or "").lower()
+        if "revenue" in biz or "income" in biz or "销项" in biz:
+            return True
+        return False
 
     def _apply_default_meta(self, entries: List[LedgerEntry], document: DocumentResult, explanation: Optional[str]) -> None:
         for entry in entries:
