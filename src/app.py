@@ -51,6 +51,7 @@ from services.accounting.ai_accountant import FinancialReportService as LegacyFi
 from services.financial_reports.report_service import FinancialReportService
 from models.financial_schemas import ReportConfig
 from services.policy_rag.knowledge_base_service import KnowledgeBaseService
+from services.qa_service import QAService
 from database import db_session
 from models.db_models import Document, LedgerEntry
 from models.schemas import DocumentResult, PolicyFlag
@@ -1947,6 +1948,46 @@ def _parse_form_json(value: str | None, default):
         return json.loads(value)
     except json.JSONDecodeError:
         return default
+
+
+@app.post("/api/v1/qa/ask")
+def qa_ask() -> Any:
+    """智能问答接口。
+    
+    Body: { question, start_date?, end_date?, limit? }
+    Return: { answer_md, evidence:{sql, params, rows_preview}, followups? }
+    """
+    data = request.get_json(force=True) or {}
+    
+    question = data.get("question", "").strip()
+    if not question:
+        return jsonify({"success": False, "error": "问题不能为空"}), 400
+    
+    start_date = data.get("start_date")
+    end_date = data.get("end_date")
+    limit = data.get("limit")
+    
+    try:
+        # 创建QA服务实例
+        with db_session() as db:
+            qa_service = QAService(db, llm_client)
+            result = qa_service.ask(question, start_date, end_date, limit)
+        
+        return jsonify({
+            "success": True,
+            "answer_md": result["answer_md"],
+            "evidence": result["evidence"],
+            "followups": result["followups"],
+        })
+    except Exception as e:
+        logging.exception("智能问答失败")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "answer_md": f"抱歉，处理您的问题时发生错误：{str(e)}",
+            "evidence": None,
+            "followups": None,
+        }), 500
 
 
 if __name__ == "__main__":

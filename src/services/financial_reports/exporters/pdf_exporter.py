@@ -20,6 +20,7 @@ class PDFExporter:
         self.reports_dir.mkdir(parents=True, exist_ok=True)
         self._chinese_font_registered = False
         self._chinese_font_name = None
+        self._chinese_font_path: Optional[str] = None
 
     def _register_chinese_font(self) -> Optional[str]:
         """注册中文字体。
@@ -71,6 +72,7 @@ class PDFExporter:
                         logger.info(f"成功注册中文字体: {font_path} -> {font_name}")
                         self._chinese_font_registered = True
                         self._chinese_font_name = font_name
+                        self._chinese_font_path = font_path
                         return font_name
                     except Exception as e:
                         logger.warning(f"注册字体失败 {font_path}: {e}")
@@ -85,6 +87,21 @@ class PDFExporter:
         except Exception as e:
             logger.warning(f"注册中文字体时发生错误: {e}")
             return None
+
+    def _get_chinese_font_face_css(self) -> str:
+        """构建weasyprint使用的@font-face CSS样式。"""
+        if not self._chinese_font_path:
+            return ""
+
+        font_url = Path(self._chinese_font_path).as_posix()
+        return (
+            "@font-face {"
+            "font-family: 'RegisteredChinese';"
+            f"src: url('file://{font_url}') format('truetype');"
+            "font-weight: normal;"
+            "font-style: normal;"
+            "}"
+        )
 
     def _markdown_to_pdf(self, markdown_content: str, output_path: Path) -> bool:
         """将Markdown内容转换为PDF文件。
@@ -102,6 +119,9 @@ class PDFExporter:
             logger.error("Markdown内容为空，无法生成PDF")
             return False
         
+        chinese_font = self._register_chinese_font()
+        font_face_css = self._get_chinese_font_face_css()
+
         try:
             # 尝试使用weasyprint
             try:
@@ -119,14 +139,16 @@ class PDFExporter:
                 
                 logger.debug("HTML转换完成，添加样式")
                 # 添加基本样式
+                font_family = '"RegisteredChinese", "SimSun", "宋体", Arial, sans-serif' if font_face_css else '"SimSun", "宋体", Arial, sans-serif'
                 html_with_style = f"""
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <meta charset="UTF-8">
                     <style>
+                        {font_face_css}
                         body {{
-                            font-family: "SimSun", "宋体", Arial, sans-serif;
+                            font-family: {font_family};
                             font-size: 12pt;
                             line-height: 1.6;
                             margin: 20px;
@@ -211,12 +233,16 @@ class PDFExporter:
                 styles = getSampleStyleSheet()
                 
                 # 自定义样式
+                header_font_name = chinese_font if chinese_font else 'Helvetica-Bold'
+                normal_font_name = chinese_font if chinese_font else 'Helvetica'
+
                 title_style = ParagraphStyle(
                     'CustomTitle',
                     parent=styles['Heading1'],
                     fontSize=18,
                     textColor=colors.black,
                     spaceAfter=12,
+                    fontName=header_font_name,
                 )
                 
                 heading_style = ParagraphStyle(
@@ -225,6 +251,24 @@ class PDFExporter:
                     fontSize=14,
                     textColor=colors.black,
                     spaceAfter=8,
+                    fontName=header_font_name,
+                )
+                
+                subheading_style = ParagraphStyle(
+                    'CustomSubheading',
+                    parent=styles['Heading3'],
+                    fontSize=12,
+                    textColor=colors.black,
+                    spaceAfter=6,
+                    fontName=header_font_name,
+                )
+                
+                body_style = ParagraphStyle(
+                    'CustomBody',
+                    parent=styles['Normal'],
+                    fontSize=10,
+                    textColor=colors.black,
+                    fontName=normal_font_name,
                 )
                 
                 logger.debug("开始解析Markdown内容")
@@ -250,7 +294,7 @@ class PDFExporter:
                         story.append(Spacer(1, 8))
                     elif line.startswith('### '):
                         text = line[4:].strip()
-                        story.append(Paragraph(text, styles['Heading3']))
+                        story.append(Paragraph(text, subheading_style))
                         story.append(Spacer(1, 6))
                     # 处理表格
                     elif line.startswith('|'):
@@ -269,11 +313,12 @@ class PDFExporter:
                                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                ('FONTNAME', (0, 0), (-1, 0), header_font_name),
                                 ('FONTSIZE', (0, 0), (-1, 0), 10),
                                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                                ('FONTNAME', (0, 1), (-1, -1), normal_font_name),
                             ]))
                             story.append(table)
                             story.append(Spacer(1, 12))
@@ -283,7 +328,7 @@ class PDFExporter:
                         # 移除markdown格式
                         text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
                         text = re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)
-                        story.append(Paragraph(text, styles['Normal']))
+                        story.append(Paragraph(text, body_style))
                     
                     i += 1
                 
@@ -581,6 +626,23 @@ class PDFExporter:
                     textColor=colors.black,
                     spaceAfter=12,
                     alignment=1,  # 居中
+                    fontName=header_font_name,
+                )
+                analysis_heading_style = ParagraphStyle(
+                    'AnalysisHeading',
+                    parent=styles['Heading2'],
+                    fontSize=14,
+                    textColor=colors.black,
+                    spaceAfter=8,
+                    fontName=header_font_name,
+                )
+                analysis_subheading_style = ParagraphStyle(
+                    'AnalysisSubheading',
+                    parent=styles['Heading3'],
+                    fontSize=12,
+                    textColor=colors.black,
+                    spaceAfter=6,
+                    fontName=header_font_name,
                 )
                 story.append(Paragraph("财务分析说明", analysis_title_style))
                 story.append(Spacer(1, 12))
@@ -597,15 +659,15 @@ class PDFExporter:
                     # 处理标题
                     if line.startswith('# '):
                         text = line[2:].strip()
-                        story.append(Paragraph(text, heading_style))
+                        story.append(Paragraph(text, analysis_heading_style))
                         story.append(Spacer(1, 8))
                     elif line.startswith('## '):
                         text = line[3:].strip()
-                        story.append(Paragraph(text, heading_style))
+                        story.append(Paragraph(text, analysis_heading_style))
                         story.append(Spacer(1, 6))
                     elif line.startswith('### '):
                         text = line[4:].strip()
-                        story.append(Paragraph(text, styles['Heading3']))
+                        story.append(Paragraph(text, analysis_subheading_style))
                         story.append(Spacer(1, 4))
                     # 处理列表
                     elif line.startswith('- ') or line.startswith('* '):
@@ -772,6 +834,10 @@ class PDFExporter:
         pdf_path = self.reports_dir / f"cash_flow_{timestamp}.pdf"
         
         logger.info(f"开始生成现金流量表PDF: {pdf_path}")
+        
+        if not markdown_content or not markdown_content.strip():
+            logger.error("Markdown内容为空，无法生成现金流量表PDF")
+            return None
         
         if self._markdown_to_pdf(markdown_content, pdf_path):
             if self._validate_pdf_file(pdf_path):
