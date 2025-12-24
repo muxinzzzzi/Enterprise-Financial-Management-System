@@ -52,7 +52,7 @@ class DataAggregator:
             if user_id:
                 query = query.filter(LedgerEntry.user_id == user_id)
 
-            entries = query.all()
+        entries = query.all()
 
         # 计算科目余额
         account_balances = self.calculate_account_balances(entries, start_date, end_date)
@@ -68,9 +68,18 @@ class DataAggregator:
             entry.amount for entry in entries if self._is_credit_account(entry.credit_account)
         )
 
+        # 记录每个科目的 entry_type （可能被后续覆盖但允许 revenue override expense）
+        account_entry_types: Dict[str, str] = {}
+        for entry in entries:
+            entry_type = (entry.entry_type or "expense").lower()
+            for acct in [entry.debit_account, entry.credit_account]:
+                if acct:
+                    account_entry_types[acct] = entry_type
+
         return FinancialData(
             account_balances=account_balances,
             account_classification=account_classification,
+            account_entry_types=account_entry_types,
             period_start=start_date,
             period_end=end_date,
             total_debit=total_debit,

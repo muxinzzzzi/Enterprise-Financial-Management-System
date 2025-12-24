@@ -130,23 +130,10 @@ class MarkdownExporter:
         lines.append(f"| **营业收入合计** | **{self._format_amount(total_revenue)}** |")
         lines.append("")
 
-        # 二、营业成本
-        lines.append("## 二、营业成本")
-        lines.append("")
-        lines.append("| 项目 | 金额 |")
-        lines.append("|------|------|")
-
-        total_cost = 0.0
-        for cost_item in data.cost_of_revenue:
-            lines.append(f"| {cost_item.name} | {self._format_amount(cost_item.amount)} |")
-            total_cost += cost_item.amount
-
-        lines.append(f"| **营业成本合计** | **{self._format_amount(total_cost)}** |")
-        lines.append("")
 
         # 三、营业费用
         if data.operating_expenses:
-            lines.append("## 三、营业费用")
+            lines.append("## 二、营业费用")
             lines.append("")
             lines.append("| 项目 | 金额 |")
             lines.append("|------|------|")
@@ -160,19 +147,19 @@ class MarkdownExporter:
             lines.append("")
 
         # 四、营业利润
-        lines.append("## 四、营业利润")
+        lines.append("## 三、营业利润")
         lines.append("")
         lines.append(f"**营业利润：** {self._format_amount(data.operating_profit)}")
         lines.append("")
 
         # 五、利润总额
-        lines.append("## 五、利润总额")
+        lines.append("## 四、利润总额")
         lines.append("")
         lines.append(f"**利润总额：** {self._format_amount(data.total_profit)}")
         lines.append("")
 
         # 六、净利润
-        lines.append("## 六、净利润")
+        lines.append("## 五、净利润")
         lines.append("")
         lines.append(f"**净利润：** {self._format_amount(data.net_profit)}")
         lines.append("")

@@ -187,10 +187,12 @@ const fmtAmount = (value) => {
 
 const fetchInvoices = async (params = {}) => {
   const searchParams = new URLSearchParams();
-  const { q, start_date, end_date, page, page_size } = params;
+  const { q, start_date, end_date, category, status, page, page_size } = params;
   if (q) searchParams.set('q', q);
   if (start_date) searchParams.set('start_date', start_date);
   if (end_date) searchParams.set('end_date', end_date);
+  if (category) searchParams.set('category', category);
+  if (status) searchParams.set('status', status);
   if (page) searchParams.set('page', page);
   if (page_size) searchParams.set('page_size', page_size);
   if (state.user?.id) searchParams.set('user_id', state.user.id);
@@ -327,8 +329,7 @@ const renderVoucherTable = (rows) => {
         <td>${fmtAmount(row.total_amount)}</td>
         <td>${fmtDateTime(row.created_at)}</td>
         <td>${row.voucher_pdf_url ? `<a href="${row.voucher_pdf_url}" target="_blank">PDF</a>` : '--'}</td>
-        <td>${row.voucher_excel_url ? `<a href="${row.voucher_excel_url}" target="_blank">Excel</a>` : '--'}</td>
-        <td><button class="ghost" data-action="delete-voucher" data-voucher-no="${row.voucher_no || row.id}" data-invoice-ids="${(row.invoice_ids || []).join(',')}">删除</button></td>
+        <td class="table-actions-td"><button class="ghost" data-action="delete-voucher" data-voucher-no="${row.voucher_no || row.id}" data-invoice-ids="${(row.invoice_ids || []).join(',')}">删除</button></td>
       </tr>`
     )
     .join('');
@@ -363,8 +364,18 @@ const loadLibrary = async () => {
   const q = document.getElementById('library-search')?.value.trim();
   const start_date = document.getElementById('library-start')?.value;
   const end_date = document.getElementById('library-end')?.value;
+  const category = document.getElementById('library-category')?.value;
+  const status = document.getElementById('library-status')?.value;
   try {
-    const data = await fetchInvoices({ q, start_date, end_date, page: state.libraryPage, page_size: PAGE_SIZE });
+    const data = await fetchInvoices({
+      q,
+      start_date,
+      end_date,
+      category,
+      status,
+      page: state.libraryPage,
+      page_size: PAGE_SIZE,
+    });
     const items = data.items || [];
     const total = data.total || 0;
     const totalPages = Math.max(1, Math.ceil(total / (data.page_size || PAGE_SIZE)));
@@ -427,6 +438,8 @@ const initLibraryActions = () => {
       document.getElementById('library-search').value = '';
       document.getElementById('library-start').value = '';
       document.getElementById('library-end').value = '';
+      document.getElementById('library-category').value = '';
+      document.getElementById('library-status').value = '';
       document.querySelectorAll('#library-table .row-checkbox').forEach((cb) => (cb.checked = false));
       if (masterCheckbox) masterCheckbox.checked = false;
     };
@@ -622,15 +635,11 @@ const initInvoiceTabs = () => {
 
 const initFinancialTabs = () => {
   financialTabButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
       const tab = btn.dataset.financialTab;
       financialTabButtons.forEach((b) => b.classList.toggle('active', b === btn));
       financialPanes.forEach((pane) => pane.classList.toggle('active', pane.dataset.financialPane === tab));
-      const targetSelector = btn.dataset.target;
-      if (targetSelector) {
-        const targetEl = document.querySelector(targetSelector);
-        targetEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
     });
   });
 };
@@ -648,6 +657,95 @@ const initAllFinancialTabs = () => {
 const shortenText = (text, len = 14) => {
   if (!text) return '';
   return text.length > len ? `${text.slice(0, len)}...` : text;
+};
+
+// 报表期间选择助手
+const pad2 = (num) => String(num).padStart(2, '0');
+
+const buildPeriodOptions = (type) => {
+  const now = new Date();
+  const options = [];
+
+  if (type === 'month') {
+    for (let i = 0; i < 12; i += 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const month = d.getMonth(); // 0-based
+      const start = `${year}-${pad2(month + 1)}-01`;
+      const endDate = new Date(year, month + 1, 0).getDate();
+      const end = `${year}-${pad2(month + 1)}-${pad2(endDate)}`;
+      options.push({
+        value: `${year}-${pad2(month + 1)}`,
+        label: `${year}年${month + 1}月`,
+        start,
+        end,
+      });
+    }
+  } else if (type === 'quarter') {
+    let year = now.getFullYear();
+    let quarter = Math.floor(now.getMonth() / 3) + 1;
+    for (let i = 0; i < 8; i += 1) {
+      const startMonth = (quarter - 1) * 3;
+      const start = `${year}-${pad2(startMonth + 1)}-01`;
+      const endDate = new Date(year, startMonth + 3, 0).getDate();
+      const end = `${year}-${pad2(startMonth + 3)}-${pad2(endDate)}`;
+      options.push({
+        value: `${year}-Q${quarter}`,
+        label: `${year}年第${quarter}季度`,
+        start,
+        end,
+      });
+      quarter -= 1;
+      if (quarter === 0) {
+        quarter = 4;
+        year -= 1;
+      }
+    }
+  } else {
+    // year
+    for (let i = 0; i < 5; i += 1) {
+      const yearVal = now.getFullYear() - i;
+      options.push({
+        value: `${yearVal}`,
+        label: `${yearVal}年度`,
+        start: `${yearVal}-01-01`,
+        end: `${yearVal}-12-31`,
+      });
+    }
+  }
+
+  return options;
+};
+
+const renderPeriodOptions = (typeSelectId, valueSelectId) => {
+  const typeEl = document.getElementById(typeSelectId);
+  const valueEl = document.getElementById(valueSelectId);
+  if (!typeEl || !valueEl) return;
+  const type = typeEl.value || 'month';
+  const options = buildPeriodOptions(type);
+  valueEl.innerHTML = options
+    .map(
+      (opt) =>
+        `<option value="${opt.value}" data-start="${opt.start}" data-end="${opt.end}">${opt.label}</option>`,
+    )
+    .join('');
+};
+
+const initPeriodSelector = (typeSelectId, valueSelectId) => {
+  renderPeriodOptions(typeSelectId, valueSelectId);
+  const typeEl = document.getElementById(typeSelectId);
+  typeEl?.addEventListener('change', () => renderPeriodOptions(typeSelectId, valueSelectId));
+};
+
+const pickPeriodRange = (typeSelectId, valueSelectId) => {
+  const typeEl = document.getElementById(typeSelectId);
+  const valueEl = document.getElementById(valueSelectId);
+  const selected = valueEl?.selectedOptions?.[0];
+  return {
+    period_type: typeEl?.value || 'month',
+    start_date: selected?.dataset.start || undefined,
+    end_date: selected?.dataset.end || undefined,
+  };
 };
 
 const tagDict = {
@@ -682,19 +780,27 @@ uploadForm?.addEventListener('submit', async (event) => {
     alert('请先选择文件');
     return;
   }
+  const invoiceType = document.getElementById('invoice-type')?.value || 'expense';
+  const uploadCategory = document.getElementById('upload-category')?.value || '';
   const metaField = document.getElementById('meta');
   let meta = metaField ? metaField.value.trim() : '';
+  let metaObj = {};
   if (!meta && state.user) {
-    meta = JSON.stringify(
-      {
-        user_email: state.user.email,
-        user_name: state.user.name,
-      },
-      null,
-      2,
-    );
-    if (metaField) metaField.value = meta;
+    metaObj.user_email = state.user.email;
+    metaObj.user_name = state.user.name;
+  } else if (meta) {
+    try {
+      metaObj = JSON.parse(meta);
+    } catch (err) {
+      console.warn('meta 不是合法 JSON，已忽略原值');
+      metaObj = {};
+    }
   }
+  metaObj.invoice_type = invoiceType;
+  if (uploadCategory) metaObj.category = uploadCategory;
+  if (invoiceType === 'income' && !uploadCategory) metaObj.category = '收入';
+  meta = JSON.stringify(metaObj, null, 2);
+  if (metaField) metaField.value = meta;
   const policiesField = document.getElementById('policies');
   const policies = policiesField ? policiesField.value.trim() : '';
 
@@ -824,6 +930,12 @@ const fetchCurrentUser = async () => {
 
 // 财务报表表单处理
 const initFinancialReports = () => {
+  // 初始化期间选择器
+  initPeriodSelector('balance-sheet-period-type', 'balance-sheet-period-value');
+  initPeriodSelector('income-statement-period-type', 'income-statement-period-value');
+  initPeriodSelector('cash-flow-period-type', 'cash-flow-period-value');
+  initPeriodSelector('all-financial-period-type', 'all-financial-period-value');
+
   // 资产负债表表单
   const balanceSheetForm = document.getElementById('balance-sheet-form');
   balanceSheetForm?.addEventListener('submit', async (e) => {
@@ -836,10 +948,9 @@ const initFinancialReports = () => {
     loadingEl.style.display = 'block';
     outputEl.textContent = '生成中...';
     
+    const period = pickPeriodRange('balance-sheet-period-type', 'balance-sheet-period-value');
     const payload = {
-      start_date: document.getElementById('balance-sheet-start')?.value || undefined,
-      end_date: document.getElementById('balance-sheet-end')?.value || undefined,
-      period_type: document.getElementById('balance-sheet-period')?.value || 'month',
+      ...period,
       currency: document.getElementById('balance-sheet-currency')?.value || 'CNY',
       company_name: document.getElementById('balance-sheet-company')?.value || undefined,
       enable_ai_analysis: false, // AI分析改为按钮触发
@@ -912,10 +1023,9 @@ const initFinancialReports = () => {
     loadingEl.style.display = 'block';
     outputEl.textContent = '生成中...';
     
+    const period = pickPeriodRange('income-statement-period-type', 'income-statement-period-value');
     const payload = {
-      start_date: document.getElementById('income-statement-start')?.value || undefined,
-      end_date: document.getElementById('income-statement-end')?.value || undefined,
-      period_type: document.getElementById('income-statement-period')?.value || 'month',
+      ...period,
       currency: document.getElementById('income-statement-currency')?.value || 'CNY',
       company_name: document.getElementById('income-statement-company')?.value || undefined,
       enable_ai_analysis: false,
@@ -984,10 +1094,9 @@ const initFinancialReports = () => {
     loadingEl.style.display = 'block';
     outputEl.textContent = '生成中...';
     
+    const period = pickPeriodRange('cash-flow-period-type', 'cash-flow-period-value');
     const payload = {
-      start_date: document.getElementById('cash-flow-start')?.value || undefined,
-      end_date: document.getElementById('cash-flow-end')?.value || undefined,
-      period_type: document.getElementById('cash-flow-period')?.value || 'month',
+      ...period,
       currency: document.getElementById('cash-flow-currency')?.value || 'CNY',
       company_name: document.getElementById('cash-flow-company')?.value || undefined,
       enable_ai_analysis: false,
@@ -1058,10 +1167,9 @@ const initFinancialReports = () => {
     incomeStatementEl.textContent = '生成中...';
     cashFlowEl.textContent = '生成中...';
     
+    const period = pickPeriodRange('all-financial-period-type', 'all-financial-period-value');
     const payload = {
-      start_date: document.getElementById('all-financial-start')?.value || undefined,
-      end_date: document.getElementById('all-financial-end')?.value || undefined,
-      period_type: document.getElementById('all-financial-period')?.value || 'month',
+      ...period,
       currency: document.getElementById('all-financial-currency')?.value || 'CNY',
       company_name: document.getElementById('all-financial-company')?.value || undefined,
       enable_ai_analysis: false,
@@ -1237,11 +1345,35 @@ window.addEventListener('load', async () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // QA 问答功能
 // ─────────────────────────────────────────────────────────────────────────────
+const extractDatesFromQuestion = (text) => {
+  const candidates = [];
+  const regex = /(\d{4})(?:年|[-\/])(\d{1,2})(?:月|[-\/])(\d{1,2})/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const [, y, m, d] = match;
+    const iso = `${y.padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    candidates.push(iso);
+  }
+  if (!candidates.length) {
+    return { startDate: null, endDate: null };
+  }
+  const sorted = candidates
+    .map((str) => new Date(str))
+    .filter((dt) => !Number.isNaN(dt.getTime()))
+    .sort((a, b) => a - b);
+  if (!sorted.length) {
+    return { startDate: null, endDate: null };
+  }
+  const toIso = (dt) => dt.toISOString().slice(0, 10);
+  return {
+    startDate: toIso(sorted[0]),
+    endDate: toIso(sorted[sorted.length - 1]),
+  };
+};
+
 function initQAForm() {
   const qaForm = document.getElementById('qa-form');
   const qaQuestion = document.getElementById('qa-question');
-  const qaStartDate = document.getElementById('qa-start-date');
-  const qaEndDate = document.getElementById('qa-end-date');
   const qaSubmitBtn = document.getElementById('qa-submit-btn');
   const qaLoading = document.getElementById('qa-loading');
   const qaResult = document.getElementById('qa-result');
@@ -1270,8 +1402,7 @@ function initQAForm() {
     const question = qaQuestion.value.trim();
     if (!question) return;
 
-    const startDate = qaStartDate.value || null;
-    const endDate = qaEndDate.value || null;
+    const { startDate, endDate } = extractDatesFromQuestion(question);
 
     // 显示加载状态
     qaSubmitBtn.disabled = true;

@@ -54,6 +54,7 @@ class LedgerEntry(Base):
     credit_account: Mapped[str] = mapped_column(String(120))
     amount: Mapped[float] = mapped_column(Float, default=0.0)
     memo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entry_type: Mapped[str | None] = mapped_column(String(20), default="expense")  # expense / revenue
     ai_generated: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
