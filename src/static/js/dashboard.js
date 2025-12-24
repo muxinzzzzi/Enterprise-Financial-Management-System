@@ -118,13 +118,11 @@ const tabReport = document.getElementById('tab-report');
 const tabJson = document.getElementById('tab-json');
 
 const chartTargets = {
-  trend: document.getElementById('trend-chart'),
   category: document.getElementById('category-chart'),
   risk: document.getElementById('risk-chart'),
 };
 
 const initCharts = () => {
-  state.charts.trend = echarts.init(chartTargets.trend);
   state.charts.category = echarts.init(chartTargets.category);
   state.charts.risk = echarts.init(chartTargets.risk);
 };
@@ -555,14 +553,7 @@ const refreshDashboard = async () => {
   const resp = await fetch(`/api/v1/dashboard/summary${query}`);
   const data = await resp.json();
   if (!data.success) return;
-  const { trend, category_breakdown, risk } = data.data;
-
-  state.charts.trend.setOption({
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: trend.map((t) => t.date) },
-    yAxis: { type: 'value' },
-    series: [{ name: '支出', type: 'line', areaStyle: {}, data: trend.map((t) => t.amount) }],
-  });
+  const { category_breakdown, risk } = data.data;
 
   state.charts.category.setOption({
     tooltip: { trigger: 'item' },

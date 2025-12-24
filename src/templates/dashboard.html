@@ -12,7 +12,6 @@
           <div class="brand-mark">R</div>
           <div>
             <h1>智能对账</h1>
-            <p>RAG+LLM 企业级合规</p>
           </div>
         </div>
 
@@ -43,57 +42,19 @@
         <div data-view-section="dashboard" class="view-section active">
         <header class="topbar">
           <div>
-            <p class="eyebrow">财务合规 · RAG 双擎</p>
-            <h2>票据对账驾驶舱</h2>
-            <p class="hint">自动 OCR / 规则校验 / 风险洞察 / 报表生成</p>
+
+            <h2>智能财务对账助手</h2>
+            
           </div>
-          <div class="top-actions">
-            <button id="refresh-dashboard" class="ghost">刷新概览</button>
-            <button class="primary">新建对账</button>
-          </div>
+
         </header>
 
-        <section class="grid stats">
-          <div class="card stat" id="stat-ocr">
-            <div class="stat-label">OCR 置信度</div>
-            <p id="stat-ocr-value">--</p>
-            <span class="badge">质量</span>
-          </div>
-          <div class="card stat" id="stat-policy">
-            <div class="stat-label">政策校验</div>
-            <p id="stat-policy-value">--</p>
-            <span class="badge warning">合规</span>
-          </div>
-          <div class="card stat" id="stat-category">
-            <div class="stat-label">分类</div>
-            <p id="stat-category-value">--</p>
-            <span class="badge info">智能分类</span>
-          </div>
-          <div class="card stat" id="stat-risk">
-            <div class="stat-label">异常提示</div>
-            <p id="stat-risk-value">--</p>
-            <span class="badge danger">风险</span>
-          </div>
-        </section>
+   
 
-        <section class="card panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">执行结果</p>
-              <h3>报告 & 原始 JSON</h3>
-            </div>
-            <div class="tabs">
-              <button data-tab="report" class="active">Markdown 报告</button>
-              <button data-tab="json">原始 JSON</button>
-            </div>
-          </div>
-          <div class="tab-content active" id="tab-report">
-            <article id="report" class="markdown-body surface">等待生成报告...</article>
-          </div>
-          <div class="tab-content" id="tab-json">
-            <pre id="result" class="surface">等待调用...</pre>
-          </div>
-        </section>
+
+       
+
+
 
         <section class="card">
           <div class="panel-head">
@@ -103,7 +64,6 @@
             </div>
           </div>
           <div class="charts">
-            <div id="trend-chart" class="chart-box"></div>
             <div id="category-chart" class="chart-box"></div>
             <div id="risk-chart" class="chart-box"></div>
           </div>
@@ -114,7 +74,7 @@
             <div>
               <p class="eyebrow">智能问答</p>
               <h3>发票数据查询助手</h3>
-              <p class="hint">用自然语言提问，AI 自动分析发票数据并返回结果</p>
+              
             </div>
           </div>
           <form id="qa-form">
@@ -127,14 +87,8 @@
               ></textarea>
             </div>
             <div class="form-row" style="display: flex; gap: 1rem;">
-              <div style="flex: 1;">
-                <label for="qa-start-date">开始日期（可选）</label>
-                <input type="date" id="qa-start-date" />
-              </div>
-              <div style="flex: 1;">
-                <label for="qa-end-date">结束日期（可选）</label>
-                <input type="date" id="qa-end-date" />
-              </div>
+
+
             </div>
             <div style="display: flex; gap: 1rem; align-items: center;">
               <button type="submit" class="primary" id="qa-submit-btn">查询</button>
