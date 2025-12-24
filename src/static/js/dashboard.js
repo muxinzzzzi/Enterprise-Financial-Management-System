@@ -635,6 +635,11 @@ const initFinancialTabs = () => {
       const tab = btn.dataset.financialTab;
       financialTabButtons.forEach((b) => b.classList.toggle('active', b === btn));
       financialPanes.forEach((pane) => pane.classList.toggle('active', pane.dataset.financialPane === tab));
+      const targetSelector = btn.dataset.target;
+      if (targetSelector) {
+        const targetEl = document.querySelector(targetSelector);
+        targetEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     });
   });
 };
@@ -1230,12 +1235,143 @@ window.addEventListener('load', async () => {
   initAllFinancialTabs();
   initFinancialReports();
   initLibraryActions();
+  initQAForm();
   initVoucherActions();
   initCharts();
   refreshDashboard();
   loadLibrary();
   loadVoucherList();
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QA 问答功能
+// ─────────────────────────────────────────────────────────────────────────────
+function initQAForm() {
+  const qaForm = document.getElementById('qa-form');
+  const qaQuestion = document.getElementById('qa-question');
+  const qaStartDate = document.getElementById('qa-start-date');
+  const qaEndDate = document.getElementById('qa-end-date');
+  const qaSubmitBtn = document.getElementById('qa-submit-btn');
+  const qaLoading = document.getElementById('qa-loading');
+  const qaResult = document.getElementById('qa-result');
+  const qaAnswer = document.getElementById('qa-answer');
+  const qaError = document.getElementById('qa-error');
+  const qaEvidence = document.getElementById('qa-evidence');
+  const qaSql = document.getElementById('qa-sql');
+  const qaParams = document.getElementById('qa-params');
+  const qaRowsPreview = document.getElementById('qa-rows-preview');
+  const qaFollowups = document.getElementById('qa-followups');
+  const qaFollowupsList = document.getElementById('qa-followups-list');
+
+  if (!qaForm) return;
+
+  // 支持Enter键提交（Shift+Enter换行）
+  qaQuestion.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      qaForm.dispatchEvent(new Event('submit'));
+    }
+  });
+
+  qaForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const question = qaQuestion.value.trim();
+    if (!question) return;
+
+    const startDate = qaStartDate.value || null;
+    const endDate = qaEndDate.value || null;
+
+    // 显示加载状态
+    qaSubmitBtn.disabled = true;
+    qaLoading.style.display = 'inline';
+    qaResult.style.display = 'none';
+    qaError.style.display = 'none';
+
+    try {
+      const response = await fetch('/api/v1/qa/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          start_date: startDate,
+          end_date: endDate,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // 渲染答案（使用marked库）
+        qaAnswer.innerHTML = marked.parse(data.answer_md || '无答案');
+        
+        // 显示证据
+        if (data.evidence) {
+          qaSql.textContent = data.evidence.sql || '';
+          qaParams.textContent = JSON.stringify(data.evidence.params || {}, null, 2);
+          
+          // 渲染数据预览
+          if (data.evidence.rows_preview && data.evidence.rows_preview.length > 0) {
+            const rows = data.evidence.rows_preview;
+            const columns = data.evidence.columns || Object.keys(rows[0] || {});
+            
+            let tableHTML = '<table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">';
+            tableHTML += '<thead><tr>';
+            columns.forEach(col => {
+              tableHTML += `<th style="border: 1px solid #ddd; padding: 8px; background: #f5f5f5; text-align: left;">${col}</th>`;
+            });
+            tableHTML += '</tr></thead><tbody>';
+            
+            rows.forEach(row => {
+              tableHTML += '<tr>';
+              columns.forEach(col => {
+                tableHTML += `<td style="border: 1px solid #ddd; padding: 8px;">${row[col] !== null && row[col] !== undefined ? row[col] : ''}</td>`;
+              });
+              tableHTML += '</tr>';
+            });
+            
+            tableHTML += '</tbody></table>';
+            tableHTML += `<p style="margin-top: 0.5rem; color: #666; font-size: 0.9em;">共 ${data.evidence.total_rows} 行，显示前 ${rows.length} 行</p>`;
+            qaRowsPreview.innerHTML = tableHTML;
+          } else {
+            qaRowsPreview.innerHTML = '<p style="color: #666;">无数据</p>';
+          }
+        }
+        
+        // 显示后续问题建议
+        if (data.followups && data.followups.length > 0) {
+          qaFollowupsList.innerHTML = '';
+          data.followups.forEach(followup => {
+            const btn = document.createElement('button');
+            btn.className = 'ghost';
+            btn.style.cssText = 'padding: 0.5rem 1rem; font-size: 0.9em;';
+            btn.textContent = followup;
+            btn.addEventListener('click', () => {
+              qaQuestion.value = followup;
+              qaForm.dispatchEvent(new Event('submit'));
+            });
+            qaFollowupsList.appendChild(btn);
+          });
+          qaFollowups.style.display = 'block';
+        } else {
+          qaFollowups.style.display = 'none';
+        }
+        
+        qaResult.style.display = 'block';
+      } else {
+        qaError.textContent = data.error || '查询失败';
+        qaError.style.display = 'block';
+      }
+    } catch (err) {
+      console.error('QA查询失败:', err);
+      qaError.textContent = `查询失败：${err.message}`;
+      qaError.style.display = 'block';
+    } finally {
+      qaSubmitBtn.disabled = false;
+      qaLoading.style.display = 'none';
+    }
+  });
+}
 
 const renderPagination = (containerId, total, page, pageSize, onChange) => {
   const container = document.getElementById(containerId);

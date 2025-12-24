@@ -109,25 +109,61 @@
           </div>
         </section>
 
-        <section class="card two-col">
-          <div>
-            <p class="eyebrow">API 调用</p>
-            <h3>/api/v1/reconciliations/run</h3>
-            <form id="api-form" class="stacked">
-              <textarea id="api-payload" placeholder='{"documents": [...], "policies": [], "options": {}}'></textarea>
-              <button type="submit">调用 /run</button>
-            </form>
+        <section class="card">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">智能问答</p>
+              <h3>发票数据查询助手</h3>
+              <p class="hint">用自然语言提问，AI 自动分析发票数据并返回结果</p>
+            </div>
           </div>
-          <div>
-            <p class="eyebrow">AI 财务助手</p>
-            <h3>问答</h3>
-            <form id="assistant-form" class="stacked">
-              <textarea id="assistant-question" placeholder="例：本季度差旅成本是多少？"></textarea>
-              <button type="submit">提问</button>
-            </form>
-            <article id="assistant-answer" class="markdown-body assistant-answer surface">等待提问...</article>
+          <form id="qa-form">
+            <div class="form-row">
+              <textarea
+                id="qa-question"
+                placeholder="例如：最近 30 天金额最大的 5 张发票是哪些？"
+                rows="3"
+                required
+              ></textarea>
+            </div>
+            <div class="form-row" style="display: flex; gap: 1rem;">
+              <div style="flex: 1;">
+                <label for="qa-start-date">开始日期（可选）</label>
+                <input type="date" id="qa-start-date" />
+              </div>
+              <div style="flex: 1;">
+                <label for="qa-end-date">结束日期（可选）</label>
+                <input type="date" id="qa-end-date" />
+              </div>
+            </div>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+              <button type="submit" class="primary" id="qa-submit-btn">查询</button>
+              <span id="qa-loading" style="display: none; color: #666;">正在查询...</span>
+            </div>
+          </form>
+          <div id="qa-result" class="surface" style="margin-top: 1rem; display: none;">
+            <div id="qa-answer" class="markdown-body"></div>
+            <details id="qa-evidence" style="margin-top: 1rem; border-top: 1px solid #e0e0e0; padding-top: 1rem;">
+              <summary style="cursor: pointer; font-weight: bold; color: #666;">查看SQL查询详情</summary>
+              <div style="margin-top: 0.5rem;">
+                <p><strong>SQL:</strong></p>
+                <pre id="qa-sql" style="background: #f5f5f5; padding: 0.5rem; border-radius: 4px; overflow-x: auto;"></pre>
+                <p style="margin-top: 0.5rem;"><strong>参数:</strong></p>
+                <pre id="qa-params" style="background: #f5f5f5; padding: 0.5rem; border-radius: 4px; overflow-x: auto;"></pre>
+                <p style="margin-top: 0.5rem;"><strong>数据预览 (前20行):</strong></p>
+                <div id="qa-rows-preview" style="max-height: 300px; overflow-y: auto;"></div>
+              </div>
+            </details>
+            <div id="qa-followups" style="margin-top: 1rem; display: none;">
+              <p style="font-weight: bold; color: #666; margin-bottom: 0.5rem;">您可能还想问：</p>
+              <div id="qa-followups-list" style="display: flex; flex-wrap: wrap; gap: 0.5rem;"></div>
+            </div>
+          </div>
+          <div id="qa-error" class="surface" style="margin-top: 1rem; display: none; background: #ffebee; color: #c62828; padding: 1rem; border-radius: 4px;">
           </div>
         </section>
+
+        
         </div>
 
         <!-- 发票管理 -->
@@ -255,10 +291,10 @@
           <!-- 报表类型选择 -->
           <section class="card">
             <div class="tabs financial-report-tabs">
-              <button data-financial-tab="balance-sheet" class="active">资产负债表</button>
-              <button data-financial-tab="income-statement">利润表</button>
-              <button data-financial-tab="cash-flow">现金流量表</button>
-              <button data-financial-tab="all-financial">生成所有报表</button>
+              <button data-financial-tab="balance-sheet" data-target="#balance-sheet-section" class="active">资产负债表</button>
+              <button data-financial-tab="income-statement" data-target="#income-statement-section">利润表</button>
+              <button data-financial-tab="cash-flow" data-target="#cash-flow-section">现金流量表</button>
+              <button data-financial-tab="all-financial" data-target="#all-financial-section">生成所有报表</button>
             </div>
           </section>
 
@@ -266,7 +302,7 @@
           <section class="card" style="margin-top:16px;">
             <!-- 资产负债表 -->
             <div data-financial-pane="balance-sheet" class="financial-pane active">
-                <section class="card two-col" style="margin-top:16px;">
+                <section id="balance-sheet-section" class="card two-col" style="margin-top:16px;">
                   <div>
                     <h4>生成资产负债表</h4>
                     <form id="balance-sheet-form" class="stacked">
@@ -315,7 +351,7 @@
 
               <!-- 利润表 -->
               <div data-financial-pane="income-statement" class="financial-pane">
-                <section class="card two-col" style="margin-top:16px;">
+                <section id="income-statement-section" class="card two-col" style="margin-top:16px;">
                   <div>
                     <h4>生成利润表</h4>
                     <form id="income-statement-form" class="stacked">
@@ -364,7 +400,7 @@
 
               <!-- 现金流量表 -->
               <div data-financial-pane="cash-flow" class="financial-pane">
-                <section class="card two-col" style="margin-top:16px;">
+                <section id="cash-flow-section" class="card two-col" style="margin-top:16px;">
                   <div>
                     <h4>生成现金流量表</h4>
                     <form id="cash-flow-form" class="stacked">
@@ -413,7 +449,7 @@
 
               <!-- 生成所有财务报表 -->
               <div data-financial-pane="all-financial" class="financial-pane">
-                <section class="card" style="margin-top:16px;">
+                <section id="all-financial-section" class="card" style="margin-top:16px;">
                   <h4>生成所有财务报表</h4>
                   <form id="all-financial-reports-form" class="stacked">
                     <div class="two-col">
@@ -483,7 +519,6 @@
               </div>
             </section>
           </div>
-        </div>
 
         <!-- AI 审核 -->
         <div data-view-section="assistant" class="view-section">
@@ -673,7 +708,6 @@
                 <div class="drawer-actions">
                   <div class="actions-inline">
                     <button id="action-approve" class="primary">✅ 通过</button>
-                    <button id="action-need-info" class="ghost">🟡 需要补充</button>
                     <button id="action-reject" class="danger ghost">🔴 拒绝</button>
                   </div>
                 </div>
