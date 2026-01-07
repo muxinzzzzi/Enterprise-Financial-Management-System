@@ -608,5 +608,205 @@
     "tax_amount": 3057.53,
     "issue_date": "2017-04-18T00:00:00",
     "created_at": "2025-12-22T11:15:36.887908"
+  },
+  {
+    "document_id": "doc_f51ba404766f",
+    "vendor": "华南理工大学",
+    "category": "其他",
+    "currency": "CNY",
+    "amount": 50000.0,
+    "tax_amount": null,
+    "issue_date": "2023-08-17T00:00:00",
+    "created_at": "2025-12-24T17:47:26.946585"
+  },
+  {
+    "document_id": "doc_1f9e60c48290",
+    "vendor": "华南理工大学",
+    "category": "其他",
+    "currency": "CNY",
+    "amount": 8000.0,
+    "tax_amount": null,
+    "issue_date": "2025-08-22T00:00:00",
+    "created_at": "2025-12-24T20:23:32.032303"
+  },
+  {
+    "document_id": "doc_5a8967eb24b9",
+    "vendor": "华南理工大学",
+    "category": "其他",
+    "currency": "CNY",
+    "amount": 52000.0,
+    "tax_amount": null,
+    "issue_date": "2025-08-22T00:00:00",
+    "created_at": "2025-12-24T20:25:01.936235"
+  },
+  {
+    "document_id": "doc_50335770ab90",
+    "vendor": "华南理工大学",
+    "category": "差旅",
+    "currency": "CNY",
+    "amount": 1600.0,
+    "tax_amount": null,
+    "issue_date": "2025-08-21T00:00:00",
+    "created_at": "2025-12-24T20:26:31.966864"
+  },
+  {
+    "document_id": "doc_0b1d7826b43d",
+    "vendor": "华南理工大学",
+    "category": "其他",
+    "currency": "CNY",
+    "amount": 35000.0,
+    "tax_amount": null,
+    "issue_date": "2025-08-21T00:00:00",
+    "created_at": "2025-12-24T20:27:47.821667"
+  },
+  {
+    "document_id": "doc_9f58492781ae",
+    "vendor": null,
+    "category": "差旅",
+    "currency": "CNY",
+    "amount": 21.0,
+    "tax_amount": null,
+    "issue_date": "2016-12-27T00:00:00",
+    "created_at": "2025-12-24T21:08:21.995535"
+  },
+  {
+    "document_id": "doc_0e6f733361c3",
+    "vendor": null,
+    "category": "差旅",
+    "currency": "CNY",
+    "amount": 21.0,
+    "tax_amount": null,
+    "issue_date": "2016-12-27T00:00:00",
+    "created_at": "2025-12-24T21:14:21.554765"
+  },
+  {
+    "document_id": "doc_d94a01ce65b5",
+    "vendor": null,
+    "category": "差旅",
+    "currency": "CNY",
+    "amount": 10.0,
+    "tax_amount": null,
+    "issue_date": "2017-08-29T00:00:00",
+    "created_at": "2025-12-24T21:15:58.933064"
+  },
+  {
+    "document_id": "doc_fddbbb23955e",
+    "vendor": null,
+    "category": "差旅",
+    "currency": "CNY",
+    "amount": 10.0,
+    "tax_amount": null,
+    "issue_date": "2017-08-29T00:00:00",
+    "created_at": "2025-12-24T21:18:01.712873"
+  },
+  {
+    "document_id": "doc_e895e87b3a24",
+    "vendor": null,
+    "category": "差旅",
+    "currency": "CNY",
+    "amount": 13.0,
+    "tax_amount": null,
+    "issue_date": "2017-02-21T00:00:00",
+    "created_at": "2025-12-24T21:20:36.637864"
+  },
+  {
+    "document_id": "doc_05ec8d300209",
+    "vendor": null,
+    "category": "差旅",
+    "currency": "CNY",
+    "amount": 27.0,
+    "tax_amount": null,
+    "issue_date": "2017-01-11T00:00:00",
+    "created_at": "2025-12-24T21:24:05.336066"
+  },
+  {
+    "document_id": "doc_53dd5bf18b05",
+    "vendor": null,
+    "category": "差旅",
+    "currency": "CNY",
+    "amount": 57.0,
+    "tax_amount": null,
+    "issue_date": "2017-01-17T00:00:00",
+    "created_at": "2025-12-24T21:28:18.015373"
+  },
+  {
+    "document_id": "doc_6bd390ee6150",
+    "vendor": "中国科学院自动化研究所",
+    "category": "其他",
+    "currency": "CNY",
+    "amount": 19811.32,
+    "tax_amount": 1188.68,
+    "issue_date": "2016-11-30T00:00:00",
+    "created_at": "2025-12-24T21:34:19.218975"
+  },
+  {
+    "document_id": "doc_e8f477de78fc",
+    "vendor": "北京宇音天下科技有限公司",
+    "category": "设备",
+    "currency": "CNY",
+    "amount": 427.35,
+    "tax_amount": 72.65,
+    "issue_date": "2017-03-16T00:00:00",
+    "created_at": "2025-12-24T21:37:26.067861"
+  },
+  {
+    "document_id": "doc_4afb32030f1c",
+    "vendor": "科大讯飞股份有限公司",
+    "category": "设备",
+    "currency": "CNY",
+    "amount": 1708.55,
+    "tax_amount": 290.45,
+    "issue_date": "2017-03-03T00:00:00",
+    "created_at": "2025-12-24T21:43:22.164821"
+  },
+  {
+    "document_id": "doc_2fcb7dd37494",
+    "vendor": "华南理工大学",
+    "category": "差旅",
+    "currency": "CNY",
+    "amount": 1600.0,
+    "tax_amount": null,
+    "issue_date": "2025-08-21T00:00:00",
+    "created_at": "2025-12-24T21:47:40.102522"
+  },
+  {
+    "document_id": "doc_275fb27b3bb8",
+    "vendor": "华南理工大学",
+    "category": "其他",
+    "currency": "CNY",
+    "amount": 52000.0,
+    "tax_amount": null,
+    "issue_date": "2025-08-22T00:00:00",
+    "created_at": "2025-12-24T21:51:39.283127"
+  },
+  {
+    "document_id": "doc_8500b535c546",
+    "vendor": "阿里云计算有限公司",
+    "category": "设备",
+    "currency": "CNY",
+    "amount": 13804.54,
+    "tax_amount": 828.27,
+    "issue_date": "2016-12-22T00:00:00",
+    "created_at": "2025-12-24T21:55:53.715383"
+  },
+  {
+    "document_id": "doc_f9761df61f75",
+    "vendor": "北京恒鸿睿科技有限公司",
+    "category": "办公",
+    "currency": "CNY",
+    "amount": 126.21,
+    "tax_amount": 3.79,
+    "issue_date": "2017-04-27T00:00:00",
+    "created_at": "2025-12-25T00:55:36.120403"
+  },
+  {
+    "document_id": "doc_19f9f7e1a613",
+    "vendor": "北京宇音天下科技有限公司",
+    "category": "设备",
+    "currency": "CNY",
+    "amount": 427.35,
+    "tax_amount": 72.65,
+    "issue_date": "2017-03-16T00:00:00",
+    "created_at": "2025-12-25T01:15:00.502914"
   }
 ]

@@ -28,8 +28,8 @@ class QAService:
     }
     
     # 最大返回行数
-    MAX_ROWS = 200
-    DEFAULT_LIMIT = 20
+    MAX_ROWS = 2000
+    DEFAULT_LIMIT = 2000
     
     # 查询超时（秒）
     QUERY_TIMEOUT = 10
@@ -162,13 +162,8 @@ class QAService:
         date_info = ""
         if start_date and end_date:
             date_info = f"用户指定的日期范围：{start_date} 到 {end_date}"
-        elif not start_date and not end_date:
-            # 默认最近30天
-            default_start = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-            default_end = datetime.now().strftime('%Y-%m-%d')
-            date_info = f"默认日期范围（最近30天）：{default_start} 到 {default_end}"
-            start_date = default_start
-            end_date = default_end
+        else:
+            date_info = "用户未提供日期范围，如非必要请避免时间过滤，尽量在性能允许范围内查询全量数据。"
         
         prompt = f"""你是一个SQL查询生成助手。根据用户问题生成安全的SQL查询计划。
 
@@ -369,9 +364,8 @@ class QAService:
 1. 用Markdown格式回答
 2. 必须引用查询结果中的具体数字
 3. 如果有多行数据，包含一个简洁的Markdown表格（最多显示10行）
-4. 在答案末尾说明"数据口径/范围"（日期范围：{start_date} 到 {end_date}，限制：前{limit}条）
-5. 保持简洁，不要编造数据
-6. 如果结果为空，说明未找到符合条件的数据
+4. 保持简洁，不要编造数据
+5. 如果结果为空，说明未找到符合条件的数据
 
 请生成答案："""
         
@@ -383,7 +377,7 @@ class QAService:
             logger.exception(f"生成答案失败: {e}")
             # 回退到简单格式
             if not rows:
-                return f"未找到符合条件的数据。\n\n**数据范围**：{start_date} 到 {end_date}"
+                return "未找到符合条件的数据。"
             
             # 生成简单的表格
             answer = f"查询到 {len(rows)} 条记录（显示前{min(len(rows), 10)}条）：\n\n"
@@ -395,8 +389,6 @@ class QAService:
                 
                 for row in rows_preview[:10]:
                     answer += "| " + " | ".join(str(row.get(col, "")) for col in columns) + " |\n"
-            
-            answer += f"\n**数据范围**：{start_date} 到 {end_date}，限制：前{limit}条"
             
             return answer
     

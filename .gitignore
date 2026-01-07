@@ -1,0 +1,22 @@
+# OS
+.DS_Store
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+
+# Archives
+*.zip
+
+# Editor swap files
+*.swp
+*.swo
+
+# Do not commit local PPT目录
+PPT版本可编辑SCI流程图/
+

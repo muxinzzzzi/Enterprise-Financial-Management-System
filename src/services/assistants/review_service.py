@@ -48,8 +48,13 @@ class ReviewService:
                     | (Document.vendor.ilike(like))
                     | (Document.category.ilike(like))
                 )
+
+            # 生成稳定的数字 display_id（最早=1），与发票库列表保持一致
+            asc_ids = [doc.id for doc in session.query(Document.id).order_by(Document.created_at.asc()).all()]
+            id_to_display = {doc_id: idx + 1 for idx, doc_id in enumerate(asc_ids)}
+
             docs = query.order_by(Document.created_at.desc()).limit(limit).all()
-            return [self._to_brief(doc) for doc in docs]
+            return [self._to_brief(doc, id_to_display) for doc in docs]
 
     def detail(self, doc_id: str) -> Dict[str, Any]:
         with db_session() as session:
@@ -282,7 +287,7 @@ class ReviewService:
         return self.feedback.few_shot_examples(limit=limit)
 
     # ------------- 辅助方法 -------------
-    def _to_brief(self, doc: Document) -> Dict[str, Any]:
+    def _to_brief(self, doc: Document, id_to_display: Dict[str, int] | None = None) -> Dict[str, Any]:
         raw = doc.raw_result or {}
         normalized = raw.get("normalized_fields") or {}
         structured = raw.get("structured_fields") or {}
@@ -296,6 +301,7 @@ class ReviewService:
             or structured.get("invoice_no")
         )
         return {
+            "display_id": (id_to_display or {}).get(doc.id, doc.id),
             "id": doc.id,
             "file_name": doc.file_name,
             "vendor": doc.vendor,

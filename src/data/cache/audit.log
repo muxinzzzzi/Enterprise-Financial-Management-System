@@ -49,3 +49,22 @@
 {"timestamp": "2025-12-22T10:08:19.001287", "event": "upload_pipeline_run", "job_id": "job_b9d385493e75", "doc_count": 1, "file_name": "vat_0012.jpg"}
 {"timestamp": "2025-12-22T10:28:21.167359", "event": "upload_pipeline_run", "job_id": "job_52c2b1d8ed90", "doc_count": 1, "file_name": "vat_0045.jpg"}
 {"timestamp": "2025-12-22T11:16:20.300346", "event": "upload_pipeline_run", "job_id": "job_a4d1ec6e3cd7", "doc_count": 1, "file_name": "vat_0029.jpg"}
+{"timestamp": "2025-12-24T17:47:57.051926", "event": "upload_pipeline_run", "job_id": "job_fd18f5d74ce9", "doc_count": 1, "file_name": "00010122_0011978006.png"}
+{"timestamp": "2025-12-24T20:24:03.460147", "event": "upload_pipeline_run", "job_id": "job_bb7f260322e3", "doc_count": 1, "file_name": "00010125_0040976744.png"}
+{"timestamp": "2025-12-24T20:25:32.280463", "event": "upload_pipeline_run", "job_id": "job_5552e7b893f0", "doc_count": 1, "file_name": "00010125_0040976748 (1).png"}
+{"timestamp": "2025-12-24T20:26:59.308782", "event": "upload_pipeline_run", "job_id": "job_ae34f743ac08", "doc_count": 1, "file_name": "00010125_0040974025.png"}
+{"timestamp": "2025-12-24T20:28:17.745979", "event": "upload_pipeline_run", "job_id": "job_e48f84538b88", "doc_count": 1, "file_name": "00010125_0040974020.png"}
+{"timestamp": "2025-12-24T21:08:52.528756", "event": "upload_pipeline_run", "job_id": "job_812d4000dd8a", "doc_count": 1, "file_name": "taxi_0018.jpg"}
+{"timestamp": "2025-12-24T21:14:50.736006", "event": "upload_pipeline_run", "job_id": "job_c8d884a2d993", "doc_count": 1, "file_name": "taxi_0018.jpg"}
+{"timestamp": "2025-12-24T21:16:26.309950", "event": "upload_pipeline_run", "job_id": "job_f719a493f7e2", "doc_count": 1, "file_name": "taxi_0092.jpg"}
+{"timestamp": "2025-12-24T21:18:31.299862", "event": "upload_pipeline_run", "job_id": "job_e990633026a3", "doc_count": 1, "file_name": "taxi_0092.jpg"}
+{"timestamp": "2025-12-24T21:21:07.070943", "event": "upload_pipeline_run", "job_id": "job_ba9fdcb6d9bc", "doc_count": 1, "file_name": "taxi_0010.jpg"}
+{"timestamp": "2025-12-24T21:24:35.181814", "event": "upload_pipeline_run", "job_id": "job_f7c2915bc11c", "doc_count": 1, "file_name": "taxi_0011.jpg"}
+{"timestamp": "2025-12-24T21:28:43.239964", "event": "upload_pipeline_run", "job_id": "job_c4ec15735df6", "doc_count": 1, "file_name": "taxi_0028.jpg"}
+{"timestamp": "2025-12-24T21:34:53.032881", "event": "upload_pipeline_run", "job_id": "job_ef6088833207", "doc_count": 1, "file_name": "vat_0096.jpg"}
+{"timestamp": "2025-12-24T21:43:55.624382", "event": "upload_pipeline_run", "job_id": "job_d4be377ce736", "doc_count": 1, "file_name": "vat_0088.jpg"}
+{"timestamp": "2025-12-24T21:48:06.602369", "event": "upload_pipeline_run", "job_id": "job_f125f6795965", "doc_count": 1, "file_name": "00010125_0040974025.png"}
+{"timestamp": "2025-12-24T21:52:06.567292", "event": "upload_pipeline_run", "job_id": "job_a751ca610b86", "doc_count": 1, "file_name": "00010125_0040976748.png"}
+{"timestamp": "2025-12-24T21:56:24.324428", "event": "upload_pipeline_run", "job_id": "job_7b21130046c3", "doc_count": 1, "file_name": "vat_0071.jpg"}
+{"timestamp": "2025-12-25T00:56:16.024394", "event": "upload_pipeline_run", "job_id": "job_606cfe834a00", "doc_count": 1, "file_name": "vat_0068.jpg"}
+{"timestamp": "2025-12-25T01:15:42.894555", "event": "upload_pipeline_run", "job_id": "job_566d943d86b0", "doc_count": 1, "file_name": "vat_0081.jpg"}

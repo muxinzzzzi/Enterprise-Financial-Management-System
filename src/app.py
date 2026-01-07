@@ -316,6 +316,58 @@ def list_invoices() -> Any:
     )
 
 
+@app.get("/api/v1/invoices/latest_raw")
+def latest_invoice_raw() -> Any:
+    """获取最近一条包含 raw_result 的发票，用于前端回显 OCR 结果。"""
+    user_id = request.args.get("user_id")
+    with db_session() as session:
+        query = session.query(Document).filter(Document.raw_result.isnot(None))
+        if user_id:
+            query = query.filter(Document.user_id == user_id)
+        doc = query.order_by(Document.created_at.desc()).first()
+        if not doc:
+            return jsonify({"success": False, "error": "no_ocr_result"}), 404
+        raw = doc.raw_result or {}
+        return jsonify(
+            {
+                "success": True,
+                "document": {
+                    "id": doc.id,
+                    "user_id": doc.user_id,
+                    "file_name": doc.file_name,
+                    "created_at": doc.created_at.isoformat(),
+                    "raw_result": raw,
+                },
+            }
+        )
+
+
+@app.get("/api/v1/invoices/<doc_id>/raw")
+def get_invoice_raw(doc_id: str) -> Any:
+    """按 doc_id 获取 raw_result，便于前端回显 OCR/提取结果。"""
+    user_id = request.args.get("user_id")
+    with db_session() as session:
+        query = session.query(Document).filter(Document.id == doc_id, Document.raw_result.isnot(None))
+        if user_id:
+            query = query.filter(Document.user_id == user_id)
+        doc = query.first()
+        if not doc:
+            return jsonify({"success": False, "error": "not_found"}), 404
+        raw = doc.raw_result or {}
+        return jsonify(
+            {
+                "success": True,
+                "document": {
+                    "id": doc.id,
+                    "user_id": doc.user_id,
+                    "file_name": doc.file_name,
+                    "created_at": doc.created_at.isoformat(),
+                    "raw_result": raw,
+                },
+            }
+        )
+
+
 
 @app.get("/api/v1/invoices/<doc_id>/file")
 def get_invoice_file(doc_id: str) -> Any:
@@ -1003,16 +1055,6 @@ def update_rule(rule_id: str) -> Any:
         return jsonify({"success": True, "data": data})
     except Exception as exc:
         logging.exception("update rule error")
-        return jsonify({"success": False, "error": str(exc)}), 400
-
-
-@app.post("/api/v1/knowledge/rules/refresh")
-def refresh_rules() -> Any:
-    try:
-        meta = knowledge_service.refresh_vector_store()
-        return jsonify({"success": True, "data": meta})
-    except Exception as exc:
-        logging.exception("refresh vector store error")
         return jsonify({"success": False, "error": str(exc)}), 400
 
 
@@ -1856,11 +1898,23 @@ def get_pdf(file_path: str) -> Any:
         
         # 解码文件路径
         decoded_path = unquote(file_path)
+        # 兼容浏览器传入缺少前导斜杠的“伪绝对路径”（例如 Users/xxx/...）
+        if not decoded_path.startswith(("/", "\\")) and decoded_path.startswith(("Users/", "Volumes/", "home/")):
+            decoded_path = "/" + decoded_path
+
+        reports_dir = (DATA_DIR / "reports" / "financial").resolve()
         file_path_obj = Path(decoded_path)
-        
-        # 安全检查：确保文件在reports目录下
-        reports_dir = DATA_DIR / "reports" / "financial"
-        if not str(file_path_obj).startswith(str(reports_dir)):
+
+        # 兼容相对路径：前端可能传回相对文件名，这里统一解析为 reports_dir 下的绝对路径
+        if not file_path_obj.is_absolute():
+            file_path_obj = (reports_dir / file_path_obj).resolve()
+        else:
+            file_path_obj = file_path_obj.resolve()
+
+        # 安全检查：确保最终路径在 reports_dir 下，防止路径穿越
+        try:
+            file_path_obj.relative_to(reports_dir)
+        except ValueError:
             return jsonify({"success": False, "error": "无效的文件路径"}), 403
         
         # 如果文件不存在，返回404

@@ -18,7 +18,7 @@
         <nav class="sidebar-nav">
           <div class="nav-section">
             <p class="nav-title">工作台</p>
-            <a class="nav-item active" data-view="dashboard">仪表盘</a>
+            <a class="nav-item active" data-view="dashboard">经营分析</a>
             <a class="nav-item" data-view="invoice">发票管理</a>
             <a class="nav-item" data-view="reports">财务报表</a>
           </div>
@@ -38,7 +38,7 @@
       </aside>
 
       <main class="content">
-        <!-- 仪表盘 -->
+        <!-- 指标看板 -->
         <div data-view-section="dashboard" class="view-section active">
         <header class="topbar">
           <div>
@@ -59,8 +59,7 @@
         <section class="card">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">经营洞察</p>
-              <h3>仪表盘</h3>
+              <h3>指标看板</h3>
             </div>
           </div>
           <div class="charts">
@@ -120,6 +119,128 @@
             <style>
               .table-actions-th {
                 width: 120px;
+              }
+
+              /* 发票库列紧凑与对齐 */
+              #library-table th.category-col,
+              #library-table td.category-col,
+              #library-table th.preview-col,
+              #library-table td.preview-col,
+              #library-table th.status-col,
+              #library-table td.status-col {
+                text-align: left;
+                white-space: nowrap;
+              }
+
+              /* 发票库筛选区域：横向排列起止日期 */
+              .invoice-controls {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 10px;
+              }
+
+              .invoice-controls input,
+              .invoice-controls select {
+                width: auto;
+                min-width: 160px;
+                margin-top: 0;
+              }
+
+              .invoice-controls button {
+                margin-top: 0;
+              }
+
+              #library-search {
+                flex: 1 1 240px;
+                min-width: 240px;
+              }
+
+              #library-start,
+              #library-end {
+                min-width: 170px;
+              }
+
+              /* 分类筛选单独换行靠左 */
+              #library-category {
+                flex: 1 1 100%;
+                max-width: 220px;
+              }
+
+              /* 状态筛选靠近左侧，中文标签 */
+              #library-status {
+                min-width: 180px;
+              }
+
+              #library-table td.action-col {
+                text-align: center;
+              }
+
+              #library-table td.action-col button.action-stacked {
+                display: inline-flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 2px;
+                line-height: 1.1;
+                padding: 10px 14px;
+                min-width: 96px;
+              }
+
+              /* AI 审核：加宽列表区域，列宽优化 */
+              .risk-board {
+                grid-template-columns: 1.5fr 0.9fr;
+              }
+
+              #risk-table th,
+              #risk-table td {
+                vertical-align: top;
+              }
+
+              /* ID 列适度收窄 */
+              #risk-table th:nth-child(2),
+              #risk-table td:nth-child(2) {
+                min-width: 70px;
+                max-width: 90px;
+                white-space: nowrap;
+              }
+
+              /* 供应商列：一行约 4 字，超出省略 */
+              #risk-table th:nth-child(3),
+              #risk-table td:nth-child(3) {
+                min-width: 110px;
+                max-width: 140px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+
+              /* 类别列横向显示 */
+              #risk-table th:nth-child(6),
+              #risk-table td:nth-child(6) {
+                min-width: 80px;
+                white-space: nowrap;
+              }
+
+              /* 风险原因列：单行展示，超出省略，宽度约容纳 6 字 */
+              #risk-table th:nth-child(7),
+              #risk-table td:nth-child(7) {
+                min-width: 140px;
+                max-width: 220px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+
+              /* 凭证库筛选横排 */
+              #voucher-search {
+                flex: 1 1 240px;
+                min-width: 240px;
+              }
+
+              #voucher-start,
+              #voucher-end {
+                min-width: 170px;
               }
 
               #voucher-table td:last-child {
@@ -209,8 +330,8 @@
                 </select>
               <select id="library-status">
                 <option value="">全部状态</option>
-                <option value="uploaded">uploaded</option>
-                <option value="voucher_generated">voucher_generated</option>
+                <option value="uploaded">未生成</option>
+                <option value="voucher_generated">已生成</option>
               </select>
                 <button id="library-search-btn" type="button" class="ghost">筛选</button>
                 <button id="library-clear-btn" type="button" class="ghost">清除</button>
@@ -223,19 +344,18 @@
                     <tr>
                       <th><input type="checkbox" id="master-checkbox" /></th>
                       <th>ID</th>
-                      <th>文件</th>
                       <th>供应商</th>
                       <th>发票时间</th>
                       <th>金额</th>
-                      <th>分类</th>
+                      <th class="category-col">分类</th>
                       <th>创建时间</th>
-                      <th>状态</th>
-                      <th>预览</th>
-                      <th>操作</th>
+                      <th class="status-col">状态</th>
+                      <th class="preview-col">预览</th>
+                      <th class="action-col">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colspan="11">加载中...</td></tr>
+                    <tr><td colspan="10">加载中...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -259,15 +379,15 @@
                     <tr>
                       <th><input type="checkbox" id="voucher-master-checkbox" /></th>
                       <th>凭证ID</th>
-                      <th>包含发票</th>
+                      <th>包含发票数</th>
                       <th>总金额</th>
-                      <th>生成时间</th>
+                      <th>生成日期</th>
                       <th>凭证文件</th>
                     <th class="table-actions-th">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colspan="8">加载中...</td></tr>
+                    <tr><td colspan="7">加载中...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -506,10 +626,6 @@
             <div>
               <p class="eyebrow">AI 审核</p>
               <h2>风险队列（RAG）</h2>
-              <p class="hint">只看风险发票，结合知识库命中与证据链</p>
-            </div>
-            <div class="top-actions">
-              <button id="risk-refresh" class="ghost">刷新风险队列</button>
             </div>
           </header>
 
@@ -518,18 +634,9 @@
               <label>搜索
                 <input id="risk-search" placeholder="发票号 / 供应商 / 抬头 / 文件名" />
               </label>
-              <label>起始日期
-                <input type="date" id="risk-date-start" />
-              </label>
-              <label>结束日期
-                <input type="date" id="risk-date-end" />
-              </label>
               <div class="status-filter">
-                <p class="hint">状态筛选（默认待审核 + 待补充）</p>
                 <div class="chip-group compact" id="risk-status-group">
                   <label class="chip-check active"><input type="checkbox" data-risk-status value="uploaded" checked /> 待审核</label>
-                  <label class="chip-check active"><input type="checkbox" data-risk-status value="reviewing" checked /> 待补充</label>
-                  <label class="chip-check"><input type="checkbox" data-risk-status value="review_rejected" /> 已拒绝</label>
                   <label class="chip-check"><input type="checkbox" data-risk-status value="review_approved" /> 已通过</label>
                 </div>
               </div>
@@ -544,7 +651,6 @@
                     <tr>
                       <th style="width:36px;"><input type="checkbox" id="risk-master" /></th>
                       <th style="width:120px;">ID</th>
-                      <th>文件</th>
                       <th>供应商</th>
                       <th>发票日期</th>
                       <th>金额</th>
@@ -555,7 +661,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colspan="10">加载中...</td></tr>
+                    <tr><td colspan="9">加载中...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -703,9 +809,6 @@
               <p class="eyebrow">知识库</p>
               <h2>报销规则与版本管理</h2>
               <p class="hint">展示、搜索、添加、编辑规则，自动同步到 RAG 校验</p>
-            </div>
-            <div class="top-actions">
-              <button id="kb-sync" class="ghost">同步到向量索引</button>
             </div>
           </header>
 

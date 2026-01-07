@@ -252,5 +252,33 @@
     "funding_scope": [],
     "risk_tags": [],
     "severity_default": "MEDIUM"
+  },
+  {
+    "id": "rule_fe37381c3931",
+    "title": "出租车费用限定",
+    "summary": "- 单次出租车费用上限70元  \n- 超出需提供书面说明  \n- 需保留出租车发票作为凭证",
+    "content": "出租车费用不得超过70元",
+    "expense_type": [
+      "出租车"
+    ],
+    "scene": [],
+    "org_scope": [],
+    "funding_scope": [],
+    "risk_tags": [],
+    "severity_default": "MEDIUM"
+  },
+  {
+    "id": "rule_df6da7322e29",
+    "title": "出租车费用限定",
+    "summary": "- 单次出租车费用上限：50元  \n- 超出部分需自付  \n- 需提供出租车发票作为凭证",
+    "content": "乘坐出租车的费用不得超过50块",
+    "expense_type": [
+      "出租车"
+    ],
+    "scene": [],
+    "org_scope": [],
+    "funding_scope": [],
+    "risk_tags": [],
+    "severity_default": "MEDIUM"
   }
 ]

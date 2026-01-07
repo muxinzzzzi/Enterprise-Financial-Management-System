@@ -6,9 +6,32 @@ const state = {
   voucherPage: 1,
   kbSelectedRule: null,
   kbPage: 1,
+  lastDocId: null,
 };
 
-const resultEl = document.getElementById('result');
+// 保底获取/创建 OCR 结果容器，避免 DOM 缺失导致报错
+const ensureOcrPreview = () => {
+  let el = document.getElementById('ocr-preview');
+  if (!el) {
+    el = document.createElement('pre');
+    el.id = 'ocr-preview';
+    el.className = 'surface small';
+    el.style.minHeight = '120px';
+    el.style.padding = '12px';
+    el.textContent = '等待上传后显示...';
+    const uploadPane = document.querySelector('[data-invoice-pane="upload"]');
+    uploadPane?.appendChild(el);
+  }
+  return el;
+};
+
+// 结果输出优先写入 #result，若不存在则退回到 OCR 区域
+const getResultTarget = () => document.getElementById('result') || ensureOcrPreview();
+const setResult = (text) => {
+  const target = getResultTarget();
+  if (target) target.textContent = text;
+  else console.warn('result element not found, message:', text);
+};
 const reportEl = document.getElementById('report');
 const uploadForm = document.getElementById('upload-form');
 const apiForm = document.getElementById('api-form');
@@ -128,35 +151,77 @@ const initCharts = () => {
 };
 
 const setStats = (documentResult) => {
-  if (!documentResult) {
-    document.getElementById('stat-ocr-value').textContent = '--';
-    document.getElementById('stat-policy-value').textContent = '--';
-    document.getElementById('stat-category-value').textContent = '--';
-    document.getElementById('stat-risk-value').textContent = '--';
+  const statOcr = document.getElementById('stat-ocr-value');
+  const statPolicy = document.getElementById('stat-policy-value');
+  const statCategory = document.getElementById('stat-category-value');
+  const statRisk = document.getElementById('stat-risk-value');
+
+  // 前端有时不渲染统计面板，缺少节点时直接跳过避免报错
+  if (!statOcr || !statPolicy || !statCategory || !statRisk) {
+    console.warn('stat elements missing, skip stats render');
     return;
   }
-  document.getElementById('stat-ocr-value').textContent = (documentResult.ocr_confidence || 0).toFixed(2);
-  document.getElementById('stat-policy-value').textContent = `${documentResult.policy_flags.length} 条提醒`;
-  document.getElementById('stat-category-value').textContent = documentResult.category || '未分类';
+
+  if (!documentResult) {
+    statOcr.textContent = '--';
+    statPolicy.textContent = '--';
+    statCategory.textContent = '--';
+    statRisk.textContent = '--';
+    return;
+  }
+
+  statOcr.textContent = (documentResult.ocr_confidence || 0).toFixed(2);
+  statPolicy.textContent = `${documentResult.policy_flags?.length || 0} 条提醒`;
+  statCategory.textContent = documentResult.category || '未分类';
   const riskCount = (documentResult.anomalies?.length || 0) + (documentResult.duplicate_candidates?.length || 0);
-  document.getElementById('stat-risk-value').textContent = `${riskCount} 条`; 
+  statRisk.textContent = `${riskCount} 条`;
 };
 
 const renderResult = (payload) => {
-  if (payload.report) {
-    reportEl.innerHTML = window.marked.parse(payload.report);
-  } else {
-    reportEl.textContent = '暂无报告';
+  if (reportEl) {
+    if (payload.report) {
+      reportEl.innerHTML = window.marked.parse(payload.report);
+    } else {
+      reportEl.textContent = '暂无报告';
+    }
   }
   if (payload.document) {
-    resultEl.textContent = JSON.stringify(payload.document, null, 2);
+    setResult(JSON.stringify(payload.document, null, 2));
     setStats(payload.document);
   } else {
-    resultEl.textContent = JSON.stringify(payload, null, 2);
+    setResult(JSON.stringify(payload, null, 2));
+  }
+};
+
+// 优先按 docId 获取数据库里的 raw_result；没有 docId 时取最近一条
+const fetchRawResult = async (docId) => {
+  try {
+    const params = new URLSearchParams();
+    if (state.user?.id) params.set('user_id', state.user.id);
+    let url = '/api/v1/invoices/latest_raw';
+    if (docId) {
+      url = `/api/v1/invoices/${encodeURIComponent(docId)}/raw`;
+    }
+    const resp = await fetch(`${url}${params.toString() ? `?${params.toString()}` : ''}`);
+    const data = await resp.json();
+    if (!resp.ok || !data.success) throw new Error(data.error || '获取 OCR 结果失败');
+    const raw = data.document?.raw_result || data.document;
+    if (raw) {
+      const text = JSON.stringify(raw, null, 2);
+      setResult(text);
+      const preview = ensureOcrPreview();
+      preview.textContent = text;
+      setStats(raw);
+    } else {
+      setResult('未找到 OCR 结果');
+    }
+  } catch (err) {
+    setResult(`获取OCR结果失败: ${err.message || err}`);
   }
 };
 
 const toggleTabs = (active) => {
+  if (!tabButtons || !tabReport || !tabJson) return;
   tabButtons.forEach((btn) => {
     const isActive = btn.dataset.tab === active;
     btn.classList.toggle('active', isActive);
@@ -183,6 +248,25 @@ const fmtDateTime = (value) => {
 const fmtAmount = (value) => {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '--';
   return Number(value).toFixed(2);
+};
+
+const fmtDate = (value) => {
+  if (!value) return '--';
+  try {
+    return new Date(value).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  } catch (e) {
+    return value;
+  }
+};
+
+const fmtStatus = (value) => {
+  if (!value) return '--';
+  if (value === 'voucher_generated') return '已生成';
+  if (value === 'uploaded') return '未生成';
+  if (value === 'review_approved') return '已生成';
+  if (value === 'reviewing') return '待补充';
+  if (value === 'review_rejected') return '已拒绝';
+  return value;
 };
 
 const fetchInvoices = async (params = {}) => {
@@ -265,7 +349,7 @@ const renderLibraryTable = (rows) => {
   const tbody = document.querySelector('#library-table tbody');
   if (!tbody) return;
   if (!rows.length) {
-    setTableMessage('#library-table tbody', '暂无数据', 11);
+    setTableMessage('#library-table tbody', '暂无数据', 10);
     return;
   }
   tbody.innerHTML = rows
@@ -274,15 +358,14 @@ const renderLibraryTable = (rows) => {
       <tr>
         <td><input type="checkbox" class="row-checkbox" data-doc-id="${doc.id}" /></td>
         <td>${doc.display_id ?? doc.id}</td>
-        <td>${doc.file_name || '--'}</td>
         <td>${doc.vendor || '--'}</td>
         <td>${doc.issue_date || '--'}</td>
         <td>${fmtAmount(doc.amount)}</td>
-        <td>${doc.category || '--'}</td>
+        <td class="category-col">${doc.category || '--'}</td>
         <td>${fmtDateTime(doc.created_at)}</td>
-        <td>${doc.status || '--'}</td>
-        <td>${doc.id ? `<a href="/api/v1/invoices/${doc.id}/file" target="_blank">预览</a>` : '--'}</td>
-        <td><button class="ghost" data-action="voucher" data-doc-id="${doc.id}">生成凭证</button></td>
+        <td class="status-col">${fmtStatus(doc.status)}</td>
+        <td class="preview-col">${doc.id ? `<a href="/api/v1/invoices/${doc.id}/file" target="_blank">预览</a>` : '--'}</td>
+        <td class="action-col"><button class="ghost action-stacked" data-action="voucher" data-doc-id="${doc.id}"><span>生成</span><span>凭证</span></button></td>
       </tr>`
     )
     .join('');
@@ -316,7 +399,7 @@ const renderVoucherTable = (rows) => {
   const tbody = document.querySelector('#voucher-table tbody');
   if (!tbody) return;
   if (!rows.length) {
-    setTableMessage('#voucher-table tbody', '暂无数据', 8);
+    setTableMessage('#voucher-table tbody', '暂无数据', 7);
     return;
   }
   tbody.innerHTML = rows
@@ -325,9 +408,9 @@ const renderVoucherTable = (rows) => {
       <tr>
         <td><input type="checkbox" class="voucher-row-checkbox" data-voucher-no="${row.voucher_no || row.id}" data-invoice-ids="${(row.invoice_ids || []).join(',')}" /></td>
         <td>${row.display_id ?? row.voucher_no ?? row.id}</td>
-        <td>${(row.invoices || []).map((i) => i.file_name || i.id).join('、') || '--'}</td>
+        <td>${Array.isArray(row.invoices) ? row.invoices.length : row.invoice_ids?.length ?? 0}</td>
         <td>${fmtAmount(row.total_amount)}</td>
-        <td>${fmtDateTime(row.created_at)}</td>
+        <td>${fmtDate(row.created_at)}</td>
         <td>${row.voucher_pdf_url ? `<a href="${row.voucher_pdf_url}" target="_blank">PDF</a>` : '--'}</td>
         <td class="table-actions-td"><button class="ghost" data-action="delete-voucher" data-voucher-no="${row.voucher_no || row.id}" data-invoice-ids="${(row.invoice_ids || []).join(',')}">删除</button></td>
       </tr>`
@@ -391,7 +474,7 @@ const loadLibrary = async () => {
     });
     return items;
   } catch (err) {
-    setTableMessage('#library-table tbody', err.message || '加载失败', 11);
+    setTableMessage('#library-table tbody', err.message || '加载失败', 10);
     return [];
   }
 };
@@ -416,7 +499,7 @@ const loadVoucherList = async () => {
     });
     return items;
   } catch (err) {
-    setTableMessage('#voucher-table tbody', err.message || '加载失败', 8);
+    setTableMessage('#voucher-table tbody', err.message || '加载失败', 7);
     return [];
   }
 };
@@ -832,7 +915,7 @@ uploadForm?.addEventListener('submit', async (event) => {
     setTimeout(() => setProgress(0, ''), 600);
   };
 
-  ocrPreview && (ocrPreview.textContent = '正在上传并识别中，请稍候...');
+  ensureOcrPreview().textContent = '正在上传并识别中，请稍候...';
   startSmoothProgress();
 
   const xhr = new XMLHttpRequest();
@@ -851,25 +934,29 @@ uploadForm?.addEventListener('submit', async (event) => {
         const data = JSON.parse(xhr.responseText || '{}');
         renderResult(data);
         if (data.document) {
-          ocrPreview && (ocrPreview.textContent = JSON.stringify(data.document, null, 2));
+          const docId = data.document.document_id || data.document.id;
+          state.lastDocId = docId || state.lastDocId;
+          ensureOcrPreview().textContent = JSON.stringify(data.document, null, 2);
+          if (docId) await fetchRawResult(docId);
         } else {
-          ocrPreview && (ocrPreview.textContent = '上传完成，等待返回数据...');
+          await fetchRawResult();
         }
       } catch (err) {
-        resultEl.textContent = `解析响应失败: ${err}`;
+        setResult(`解析响应失败: ${err}`);
+        await fetchRawResult();
       }
       refreshDashboard();
       loadLibrary();
       loadVoucherList();
     } else {
-      resultEl.textContent = `上传失败: ${xhr.status}`;
-      ocrPreview && (ocrPreview.textContent = '上传失败，请重试');
+      setResult(`上传失败: ${xhr.status}`);
+      ensureOcrPreview().textContent = '上传失败，请重试';
     }
   };
   xhr.onerror = () => {
     endSmoothProgress();
-    resultEl.textContent = '上传失败：网络异常';
-    ocrPreview && (ocrPreview.textContent = '上传失败，请检查网络');
+    setResult('上传失败：网络异常');
+    ensureOcrPreview().textContent = '上传失败，请检查网络';
   };
   xhr.send(formData);
 });
@@ -889,9 +976,17 @@ apiForm?.addEventListener('submit', async (event) => {
     });
     const data = await resp.json();
     renderResult({ document: data.documents?.[0], report: data.report });
+    const docId = data.documents?.[0]?.document_id || data.documents?.[0]?.id;
+    state.lastDocId = docId || state.lastDocId;
+    if (docId) {
+      await fetchRawResult(docId);
+    } else if (!data.documents?.[0]) {
+      await fetchRawResult();
+    }
     refreshDashboard();
   } catch (error) {
-    resultEl.textContent = `调用失败: ${error}`;
+    setResult(`调用失败: ${error}`);
+    await fetchRawResult();
   }
 });
 
@@ -1540,7 +1635,7 @@ const renderUploadPreview = (file) => {
 fileInputEl?.addEventListener('change', (e) => {
   const file = e.target.files?.[0];
   renderUploadPreview(file);
-  if (ocrPreview) ocrPreview.textContent = file ? '准备上传...' : '等待上传后显示...';
+  ensureOcrPreview().textContent = file ? '准备上传...' : '等待上传后显示...';
   if (uploadProgress) {
     uploadProgress.style.width = '0%';
     uploadProgress.textContent = '';
@@ -1580,7 +1675,7 @@ const paginate = (rows = []) => {
 
 const getSelectedStatuses = () => {
   const inputs = Array.from(document.querySelectorAll('[data-risk-status]:checked'));
-  if (!inputs.length) return ['uploaded', 'reviewing'];
+  if (!inputs.length) return ['uploaded', 'reviewing', 'review_approved'];
   return inputs.map((i) => i.value);
 };
 
@@ -1593,11 +1688,14 @@ const reasonFromRow = (row = {}) => {
   return merged.length ? merged.slice(0, 3).join(' / ') : '--';
 };
 
+const getRiskDisplayId = (row = {}) =>
+  row.invoice_id ?? row.display_id ?? row.invoice_no ?? row.id ?? row.doc_id ?? '--';
+
 const renderRiskTable = () => {
   if (!riskTableBody) return;
   const rows = paginate(riskState.filtered);
   if (!rows.length) {
-    riskTableBody.innerHTML = '<tr><td colspan="10">暂无风险票据</td></tr>';
+    riskTableBody.innerHTML = '<tr><td colspan="9">暂无风险票据</td></tr>';
     return;
   }
   riskTableBody.innerHTML = rows
@@ -1605,8 +1703,7 @@ const renderRiskTable = () => {
       (row) => `
       <tr data-risk-id="${row.id}">
         <td><input type="checkbox" class="risk-row" data-id="${row.id}" /></td>
-        <td>${row.id}</td>
-        <td>${row.file_name || '--'}</td>
+        <td>${getRiskDisplayId(row)}</td>
         <td>${row.vendor || '--'}</td>
         <td>${row.issue_date || '--'}</td>
         <td>${fmtAmount(row.amount)}</td>
@@ -1650,19 +1747,13 @@ const renderRiskPagination = () => {
 const applyRiskFilters = (resetPage = false) => {
   if (!riskState.queue) return;
   const q = riskSearchInput?.value?.trim().toLowerCase() || '';
-  const start = riskStartInput?.value ? new Date(riskStartInput.value).getTime() : null;
-  const end = riskEndInput?.value ? new Date(riskEndInput.value).getTime() : null;
   const statuses = getSelectedStatuses();
 
   riskState.filtered = riskState.queue.filter((item) => {
     const statusOk = statuses.includes(item.status || 'uploaded');
-    const text = `${item.file_name || ''} ${item.vendor || ''} ${item.buyer || ''} ${item.invoice_no || ''}`.toLowerCase();
+    const text = `${item.file_name || ''} ${item.vendor || ''} ${item.buyer || ''} ${item.invoice_no || ''} ${item.invoice_id || ''}`.toLowerCase();
     const searchOk = !q || text.includes(q);
-    const tsRaw = item.issue_date || item.created_at;
-    const ts = tsRaw ? new Date(tsRaw).getTime() : null;
-    const startOk = start ? ts && ts >= start : true;
-    const endOk = end ? ts && ts <= end : true;
-    return statusOk && searchOk && startOk && endOk;
+    return statusOk && searchOk;
   });
 
   if (resetPage) riskState.page = 1;
@@ -1672,7 +1763,7 @@ const applyRiskFilters = (resetPage = false) => {
 
 const loadRiskQueue = async () => {
   if (!riskTableBody) return;
-  riskTableBody.innerHTML = '<tr><td colspan="10">加载中...</td></tr>';
+  riskTableBody.innerHTML = '<tr><td colspan="9">加载中...</td></tr>';
   const params = new URLSearchParams({ status: 'all', limit: 200 });
   const q = riskSearchInput?.value?.trim();
   if (q) params.set('q', q);
@@ -1683,7 +1774,7 @@ const loadRiskQueue = async () => {
     riskState.queue = data.data || [];
     applyRiskFilters(true);
   } catch (err) {
-    riskTableBody.innerHTML = `<tr><td colspan="10">${err.message || err}</td></tr>`;
+    riskTableBody.innerHTML = `<tr><td colspan="9">${err.message || err}</td></tr>`;
   }
 };
 
@@ -1958,20 +2049,13 @@ const rejectRisk = async () => {
   }
   const reason = prompt('拒绝理由（可选）', '违反报销规则');
   try {
-    const resp = await fetch(`/api/v1/review/${riskState.detail.id}/update`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        reviewer_id: state.user?.id,
-        changes: [{ field_name: 'status', new_value: 'review_rejected', reason: '拒绝', comment: reason || '' }],
-      }),
-    });
-    const data = await resp.json();
-    if (!data.success) throw new Error(data.error || '拒绝失败');
-    riskState.detail = data.data || riskState.detail;
+    const resp = await fetch(`/api/v1/invoices/${riskState.detail.id}`, { method: 'DELETE' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.success) throw new Error(data.error || '拒绝失败');
+    riskState.detail = null;
+    setDrawerVisibility(false);
     loadRiskQueue();
-    renderDrawer();
-    alert('已拒绝');
+    alert('已删除该发票');
   } catch (err) {
     alert(err.message || err);
   }
@@ -2153,17 +2237,6 @@ const saveRule = async () => {
   }
 };
 
-const syncKnowledge = async () => {
-  try {
-    const resp = await fetch('/api/v1/knowledge/rules/refresh', { method: 'POST' });
-    const data = await resp.json();
-    if (!data.success) throw new Error(data.error || '同步失败');
-    alert(`已同步 ${data.data?.count ?? 0} 条规则到向量索引`);
-  } catch (err) {
-    alert(err.message || err);
-  }
-};
-
 // ---------- 事件绑定 ----------
 riskStatusInputs.forEach((input) => {
   input.addEventListener('change', () => {
@@ -2236,7 +2309,6 @@ document.getElementById('kb-reset-btn')?.addEventListener('click', () => {
 });
 document.getElementById('kb-save')?.addEventListener('click', saveRule);
 document.getElementById('kb-reset')?.addEventListener('click', resetRuleForm);
-document.getElementById('kb-sync')?.addEventListener('click', syncKnowledge);
 kbMasterCheckbox?.addEventListener('change', (e) => {
   document.querySelectorAll('.kb-row').forEach((cb) => {
     cb.checked = e.target.checked;
