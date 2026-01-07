@@ -534,7 +534,7 @@ pytest --cov=src tests/
 如有问题或建议，请通过以下方式联系：
 
 - **GitHub Issues**: [提交问题](https://github.com/muxinzzzzi/Enterprise-Financial-Management-System/issues)
-- **Email**: your-email@example.com
+- **Email**: muxinzi3379@outlook.com
 
 ---
 
