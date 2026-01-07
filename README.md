@@ -21,6 +21,7 @@
 - [环境要求](#环境要求)
 - [快速开始](#快速开始)
 - [配置说明](#配置说明)
+- [检测百度 OCR 配置](#检测百度-ocr-配置)
 - [运行项目](#运行项目)
 - [使用指南](#使用指南)
 - [项目结构](#项目结构)
@@ -203,6 +204,28 @@ DATABASE_URL=postgresql://user:password@localhost/dbname
 # MySQL 示例
 DATABASE_URL=mysql+pymysql://user:password@localhost/dbname
 ```
+
+---
+
+## 🔍 检测百度 OCR 配置
+
+使用内置脚本验证 `.env` 中的百度 OCR 配置是否生效，并跑通 ingestion + OCR 流程：
+
+```bash
+# 1) 激活虚拟环境
+source .venv/bin/activate
+
+# 2) 运行检测脚本（可替换为自己的图片路径）
+python src/scripts/test_ocr.py \
+  --image InvoiceDatasets-master/dataset/images/taxi_test/00010122_0011978006.png
+```
+
+运行后终端会打印：
+- 配置检查（是否已配置 BAIDU_APP_ID/BAIDU_API_KEY/BAIDU_SECRET_KEY）
+- 使用的 OCR 引擎、置信度、文本前 400 字符
+- 若配置缺失或调用失败，会在日志中提示原因
+
+Windows 用户可将第一行改为 `.venv\Scripts\activate`。
 
 ---
 
